@@ -11,6 +11,8 @@ using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Mathematics;
 using BenchmarkDotNet.Portability;
 using BenchmarkDotNet.Reports;
+using CsharpRAPL;
+using CsharpRAPL.Devices;
 using JetBrains.Annotations;
 using Perfolizer.Horology;
 
@@ -36,11 +38,13 @@ namespace BenchmarkDotNet.Engines
         [PublicAPI] public string BenchmarkName { get; }
 
         private IClock Clock { get; }
+
         private bool ForceGcCleanups { get; }
         private int UnrollFactor { get; }
         private RunStrategy Strategy { get; }
         private bool EvaluateOverhead { get; }
         private bool MemoryRandomization { get; }
+        private RAPL Rapl { get; }
 
         private readonly List<Measurement> jittingMeasurements = new(10);
         private readonly bool includeExtraStats;
@@ -77,6 +81,15 @@ namespace BenchmarkDotNet.Engines
             Strategy = targetJob.ResolveValue(RunMode.RunStrategyCharacteristic, Resolver);
             EvaluateOverhead = targetJob.ResolveValue(AccuracyMode.EvaluateOverheadCharacteristic, Resolver);
             MemoryRandomization = targetJob.ResolveValue(RunMode.MemoryRandomizationCharacteristic, Resolver);
+
+            Rapl = new RAPL(
+                new List<Sensor>() {
+                    new Sensor("timer", new TimerAPI(), CollectionApproach.DIFFERENCE),
+                    new Sensor("package", new PackageAPI(), CollectionApproach.DIFFERENCE),
+                    new Sensor("dram", new DramAPI(), CollectionApproach.DIFFERENCE),
+                    new Sensor("temp", new TempAPI(), CollectionApproach.AVERAGE)
+                }
+            );
 
             random = new Random(12345); // we are using constant seed to try to get repeatable results
         }
@@ -172,9 +185,15 @@ namespace BenchmarkDotNet.Engines
             if (EngineEventSource.Log.IsEnabled())
                 EngineEventSource.Log.IterationStart(data.IterationMode, data.IterationStage, totalOperations);
 
+            // Energy consumption before and after the execution
+            Rapl.Start();
             var clockSpan = randomizeMemory
                 ? MeasureWithRandomStack(action, invokeCount / unrollFactor)
                 : Measure(action, invokeCount / unrollFactor);
+            Rapl.End();
+
+            var dramEnergy = Rapl.GetDeviceResult("dram");
+            var packageEnergy = Rapl.GetDeviceResult("package");
 
             if (EngineEventSource.Log.IsEnabled())
                 EngineEventSource.Log.IterationStop(data.IterationMode, data.IterationStage, totalOperations);
@@ -188,7 +207,7 @@ namespace BenchmarkDotNet.Engines
             GcCollect();
 
             // Results
-            var measurement = new Measurement(0, data.IterationMode, data.IterationStage, data.Index, totalOperations, clockSpan.GetNanoseconds());
+            var measurement = new Measurement(0, data.IterationMode, data.IterationStage, data.Index, totalOperations, clockSpan.GetNanoseconds(), packageEnergy, dramEnergy);
             WriteLine(measurement.ToString());
             if (measurement.IterationStage == IterationStage.Jitting)
                 jittingMeasurements.Add(measurement);

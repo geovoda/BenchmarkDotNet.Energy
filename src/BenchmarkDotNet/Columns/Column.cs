@@ -57,6 +57,9 @@ namespace BenchmarkDotNet.Columns
         public const string CodeSize = "Code Size";
         public const string Exceptions = "Exceptions";
 
+        public const string DramEnergy = "Avg. Dram Energy";
+        public const string PackageEnergy = "Avg. Package Energy";
+
         //Characteristics:
         public const string Id = "Id";
 

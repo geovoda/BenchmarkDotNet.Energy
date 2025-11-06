@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 #if DEBUG
 using System.Diagnostics;
 #endif
@@ -21,8 +22,10 @@ namespace BenchmarkDotNet.Reports
 
         private const string NsSymbol = "ns";
         private const string OpSymbol = "op";
+        private const string DramJSymbol = "uJdram";
+        private const string PackageJSymbol = "uJpkg";
 
-        private static Measurement Error() => new Measurement(-1, IterationMode.Unknown, IterationStage.Unknown, 0, 0, 0);
+        private static Measurement Error() => new Measurement(-1, IterationMode.Unknown, IterationStage.Unknown, 0, 0, 0, 0, 0);
 
         private static readonly int IterationInfoNameMaxWidth
             = Enum.GetNames(typeof(IterationMode)).Max(text => text.Length) + Enum.GetNames(typeof(IterationStage)).Max(text => text.Length);
@@ -46,6 +49,16 @@ namespace BenchmarkDotNet.Reports
         public double Nanoseconds { get; }
 
         /// <summary>
+        /// Gets the package energy consumed to perform all operations.
+        /// </summary>
+        public double PackageEnergy { get; }
+
+        /// <summary>
+        /// Gets the dram energy consumed to perform all operations.
+        /// </summary>
+        public double DramEnergy { get; }
+
+        /// <summary>
         /// Creates an instance of <see cref="Measurement"/> struct.
         /// </summary>
         /// <param name="launchIndex"></param>
@@ -54,10 +67,14 @@ namespace BenchmarkDotNet.Reports
         /// <param name="iterationIndex"></param>
         /// <param name="operations">The number of operations performed.</param>
         /// <param name="nanoseconds">The total number of nanoseconds it took to perform all operations.</param>
-        public Measurement(int launchIndex, IterationMode iterationMode, IterationStage iterationStage, int iterationIndex, long operations, double nanoseconds)
+        /// <param name="packageEnergy">The CPU package energy consumed to perform all operations.</param>
+        /// <param name="dramEnergy">The dram energy consumed to perform all operations.</param>
+        public Measurement(int launchIndex, IterationMode iterationMode, IterationStage iterationStage, int iterationIndex, long operations, double nanoseconds, double packageEnergy, double dramEnergy)
         {
             Operations = operations;
             Nanoseconds = nanoseconds;
+            PackageEnergy = packageEnergy;
+            DramEnergy = dramEnergy;
             LaunchIndex = launchIndex;
             IterationMode = iterationMode;
             IterationStage = iterationStage;
@@ -99,6 +116,16 @@ namespace BenchmarkDotNet.Reports
 
             builder.Append(GetAverageTime().ToDefaultString("0.0000").ToAscii());
             builder.Append("/op");
+            builder.Append(", ");
+
+            builder.Append(PackageEnergy.ToString("0.00", MainCultureInfo).ToAscii());
+            builder.Append(' ');
+            builder.Append(PackageJSymbol);
+            builder.Append(", ");
+
+            builder.Append(DramEnergy.ToString("0.00", MainCultureInfo).ToAscii());
+            builder.Append(' ');
+            builder.Append(DramJSymbol);
 
             return builder.ToString();
         }
@@ -147,6 +174,8 @@ namespace BenchmarkDotNet.Reports
                 var measurementsInfoSplit = measurementsInfo.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
                 long op = 1L;
                 double ns = double.PositiveInfinity;
+                double dramEnergy = 0.0;
+                double packageEnergy = 0.0;
                 foreach (string item in measurementsInfoSplit)
                 {
                     var measurementSplit = item.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
@@ -160,9 +189,15 @@ namespace BenchmarkDotNet.Reports
                         case OpSymbol:
                             op = long.Parse(value, MainCultureInfo);
                             break;
+                        case PackageJSymbol:
+                            packageEnergy = double.Parse(value, MainCultureInfo);
+                            break;
+                        case DramJSymbol:
+                            dramEnergy = double.Parse(value, MainCultureInfo);
+                            break;
                     }
                 }
-                return new Measurement(processIndex, iterationMode, iterationStage, iterationIndex, op, ns);
+                return new Measurement(processIndex, iterationMode, iterationStage, iterationIndex, op, ns, packageEnergy, dramEnergy);
             }
             catch (Exception)
             {

@@ -55,6 +55,7 @@ namespace BenchmarkDotNet.Engines
             if (workloadActualMeasurements.IsEmpty())
                 yield break;
 
+            // TODO: Check for energy "outliers"
             double overhead = overheadActualMeasurements.IsEmpty() ? 0.0 : new Statistics(overheadActualMeasurements.Select(m => m.Nanoseconds)).Median;
             var mainStats = new Statistics(workloadActualMeasurements.Select(m => m.Nanoseconds));
             int resultIndex = 0;
@@ -72,7 +73,9 @@ namespace BenchmarkDotNet.Engines
                     IterationStage.Result,
                     ++resultIndex,
                     measurement.Operations,
-                    value);
+                    value,
+                    measurement.PackageEnergy,
+                    measurement.DramEnergy);
             }
         }
 
