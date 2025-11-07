@@ -7,12 +7,11 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using BenchmarkDotNet.Characteristics;
 using BenchmarkDotNet.Environments;
+using BenchmarkDotNet.Helpers.RAPL;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Mathematics;
 using BenchmarkDotNet.Portability;
 using BenchmarkDotNet.Reports;
-using CsharpRAPL;
-using CsharpRAPL.Devices;
 using JetBrains.Annotations;
 using Perfolizer.Horology;
 
@@ -82,14 +81,9 @@ namespace BenchmarkDotNet.Engines
             EvaluateOverhead = targetJob.ResolveValue(AccuracyMode.EvaluateOverheadCharacteristic, Resolver);
             MemoryRandomization = targetJob.ResolveValue(RunMode.MemoryRandomizationCharacteristic, Resolver);
 
-            Rapl = new RAPL(
-                new List<Sensor>() {
-                    new Sensor("timer", new TimerAPI(), CollectionApproach.DIFFERENCE),
-                    new Sensor("package", new PackageAPI(), CollectionApproach.DIFFERENCE),
-                    new Sensor("dram", new DramAPI(), CollectionApproach.DIFFERENCE),
-                    new Sensor("temp", new TempAPI(), CollectionApproach.AVERAGE)
-                }
-            );
+            Rapl = new RAPL();
+            Rapl.AddDRAMSensor();
+            Rapl.AddPackageSensor();
 
             random = new Random(12345); // we are using constant seed to try to get repeatable results
         }
@@ -185,11 +179,14 @@ namespace BenchmarkDotNet.Engines
             if (EngineEventSource.Log.IsEnabled())
                 EngineEventSource.Log.IterationStart(data.IterationMode, data.IterationStage, totalOperations);
 
-            // Energy consumption before and after the execution
+            // Energy consumption before the execution
             Rapl.Start();
+
             var clockSpan = randomizeMemory
                 ? MeasureWithRandomStack(action, invokeCount / unrollFactor)
                 : Measure(action, invokeCount / unrollFactor);
+
+            // Energy consumption after the execution
             Rapl.End();
 
             var dramEnergy = Rapl.GetDeviceResult("dram");

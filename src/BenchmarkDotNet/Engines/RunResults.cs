@@ -55,7 +55,7 @@ namespace BenchmarkDotNet.Engines
             if (workloadActualMeasurements.IsEmpty())
                 yield break;
 
-            // TODO: Check for energy "outliers"
+            // TODO AAU: Check if we the energy "outliers" have to be filtered.
             double overhead = overheadActualMeasurements.IsEmpty() ? 0.0 : new Statistics(overheadActualMeasurements.Select(m => m.Nanoseconds)).Median;
             var mainStats = new Statistics(workloadActualMeasurements.Select(m => m.Nanoseconds));
             int resultIndex = 0;
