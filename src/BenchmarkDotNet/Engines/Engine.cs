@@ -179,18 +179,9 @@ namespace BenchmarkDotNet.Engines
             if (EngineEventSource.Log.IsEnabled())
                 EngineEventSource.Log.IterationStart(data.IterationMode, data.IterationStage, totalOperations);
 
-            // Energy consumption before the execution
-            Rapl.Start();
-
-            var clockSpan = randomizeMemory
+            var (clockSpan, dramEnergy, packageEnergy) = randomizeMemory
                 ? MeasureWithRandomStack(action, invokeCount / unrollFactor)
                 : Measure(action, invokeCount / unrollFactor);
-
-            // Energy consumption after the execution
-            Rapl.End();
-
-            var dramEnergy = Rapl.GetDeviceResult("dram");
-            var packageEnergy = Rapl.GetDeviceResult("package");
 
             if (EngineEventSource.Log.IsEnabled())
                 EngineEventSource.Log.IterationStop(data.IterationMode, data.IterationStage, totalOperations);
@@ -216,7 +207,7 @@ namespace BenchmarkDotNet.Engines
         // resulting in unexpected measurements on some AMD cpus,
         // even if the stackalloc branch isn't executed. (#2366)
         [MethodImpl(MethodImplOptions.NoInlining | CodeGenHelper.AggressiveOptimizationOption)]
-        private unsafe ClockSpan MeasureWithRandomStack(Action<long> action, long invokeCount)
+        private unsafe (ClockSpan, double dramEnergy, double packageEnergy)  MeasureWithRandomStack(Action<long> action, long invokeCount)
         {
             byte* stackMemory = stackalloc byte[random.Next(32)];
             var clockSpan = Measure(action, invokeCount);
@@ -228,11 +219,20 @@ namespace BenchmarkDotNet.Engines
         private unsafe void Consume(byte* _) { }
 
         [MethodImpl(MethodImplOptions.NoInlining | CodeGenHelper.AggressiveOptimizationOption)]
-        private ClockSpan Measure(Action<long> action, long invokeCount)
+        private (ClockSpan, double dramEnergy, double packageEnergy) Measure(Action<long> action, long invokeCount)
         {
+            Rapl.Start();
             var clock = Clock.Start();
+
             action(invokeCount);
-            return clock.GetElapsed();
+
+            var clockSpan = clock.GetElapsed();
+            Rapl.End();
+
+            var dramEnergy = Rapl.GetDeviceResult("dram");
+            var packageEnergy = Rapl.GetDeviceResult("package");
+
+            return (clockSpan, dramEnergy, packageEnergy);
         }
 
         private (GcStats, ThreadingStats, double) GetExtraStats(IterationData data)
