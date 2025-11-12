@@ -59,6 +59,8 @@ namespace BenchmarkDotNet.Columns
 
         public const string DramEnergy = "Mean Dram Energy";
         public const string PackageEnergy = "Mean Package Energy";
+        public const string DramEnergyPerIter = "Mean Iter Dram Energy";
+        public const string PackageEnergyIter = "Mean Iter Package Energy";
 
         //Characteristics:
         public const string Id = "Id";

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using BenchmarkDotNet.Analysers;
 using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Engines;
@@ -38,31 +39,62 @@ namespace BenchmarkDotNet.Diagnosers
 
         public IEnumerable<Metric> ProcessResults(DiagnoserResults diagnoserResults)
         {
-            // TODO AAU: Check if this avg should be processed before
+            // var samples = diagnoserResults.Measurements
+            //     .Where(m => m.IterationMode == IterationMode.Workload &&
+            //                 m.IterationStage == IterationStage.Actual)
+            //     .ToList();
+            //
+            // long totalOps = samples.Sum(m => m.Operations);
+            // double totalDram_uJ = samples.Sum(m => m.DramEnergy);
+            // double totalPkg_uJ  = samples.Sum(m => m.PackageEnergy);
+            //
+            // // Per-op in µJ/op (keep µJ because values are small)
+            // double dramPerOp_uJ = totalOps > 0 ? totalDram_uJ / totalOps : double.NaN;
+            // double pkgPerOp_uJ  = totalOps > 0 ? totalPkg_uJ  / totalOps : double.NaN;
+            //
+            // // Per-iteration in J (average iteration energy, then convert µJ -> J)
+            // double dramPerIter_J = samples.Any() ? samples.Average(m => m.DramEnergy)    * 1e-6 : double.NaN;
+            // double pkgPerIter_J  = samples.Any() ? samples.Average(m => m.PackageEnergy) * 1e-6 : double.NaN;
+            //
+            // yield return new Metric(EnergyMetricDescriptor.DramEnergy, dramPerOp_uJ);                 // uJ/op
+            // yield return new Metric(EnergyMetricDescriptor.PackageEnergy, pkgPerOp_uJ);               // uJ/op
+            // yield return new Metric(EnergyMetricDescriptor.DramEnergyPerIteration, dramPerIter_J);   // J / iteration
+            // yield return new Metric(EnergyMetricDescriptor.PackageEnergyPerIteration, pkgPerIter_J); // J / iteration
+            // TODO AAU: Check if this avg should be processed before and check which calucaltions are right ones
             double dramEnergyAvg = 0.0;
             double packageEnergyAvg = 0.0;
+            double dramIterEnergyAvg = 0.0;
+            double packageIterEnergyAvg = 0.0;
 
             foreach (var measurement in diagnoserResults.Measurements)
             {
                 // TODO AAU: Check if should check the iteration mode and iteration stage
                 dramEnergyAvg += measurement.DramEnergy / measurement.Operations;
                 packageEnergyAvg += measurement.PackageEnergy / measurement.Operations;
+                dramIterEnergyAvg += measurement.DramEnergy;
+                packageIterEnergyAvg += measurement.PackageEnergy;
             }
 
             if (diagnoserResults.Measurements.Count > 0)
             {
                 dramEnergyAvg /=  diagnoserResults.Measurements.Count;
                 packageEnergyAvg /=  diagnoserResults.Measurements.Count;
+                dramIterEnergyAvg /=  diagnoserResults.Measurements.Count;
+                packageIterEnergyAvg /=  diagnoserResults.Measurements.Count;
             }
 
             yield return new Metric(EnergyMetricDescriptor.DramEnergy, dramEnergyAvg);
             yield return new Metric(EnergyMetricDescriptor.PackageEnergy, packageEnergyAvg);
+            yield return new Metric(EnergyMetricDescriptor.DramEnergyPerIteration, dramIterEnergyAvg);
+            yield return new Metric(EnergyMetricDescriptor.PackageEnergyPerIteration,  packageIterEnergyAvg);
         }
 
         private class EnergyMetricDescriptor : IMetricDescriptor
         {
             internal static readonly IMetricDescriptor DramEnergy = new EnergyMetricDescriptor("Dram", Column.DramEnergy);
             internal static readonly IMetricDescriptor PackageEnergy = new EnergyMetricDescriptor("Package", Column.PackageEnergy);
+            internal static readonly IMetricDescriptor DramEnergyPerIteration = new EnergyMetricDescriptor("DramPerIter", Column.DramEnergyPerIter);
+            internal static readonly IMetricDescriptor PackageEnergyPerIteration = new EnergyMetricDescriptor("PackagePerIter", Column.PackageEnergyIter);
             private EnergyMetricDescriptor(string id, string columnName)
             {
                 Id = $"AvgEnergy{id}";
