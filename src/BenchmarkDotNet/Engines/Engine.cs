@@ -82,13 +82,14 @@ namespace BenchmarkDotNet.Engines
             MemoryRandomization = targetJob.ResolveValue(RunMode.MemoryRandomizationCharacteristic, Resolver);
 
             Rapl = new RAPL();
-            Rapl.AddDRAMSensor();
+            // Rapl.AddDRAMSensor();
             Rapl.AddPackageSensor();
 
             random = new Random(12345); // we are using constant seed to try to get repeatable results
         }
 
         public void Dispose()
+
         {
             try
             {

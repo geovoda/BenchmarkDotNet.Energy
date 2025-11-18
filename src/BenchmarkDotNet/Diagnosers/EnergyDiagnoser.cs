@@ -39,76 +39,74 @@ namespace BenchmarkDotNet.Diagnosers
 
         public IEnumerable<Metric> ProcessResults(DiagnoserResults diagnoserResults)
         {
-            // var samples = diagnoserResults.Measurements
-            //     .Where(m => m.IterationMode == IterationMode.Workload &&
-            //                 m.IterationStage == IterationStage.Actual)
-            //     .ToList();
-            //
-            // long totalOps = samples.Sum(m => m.Operations);
-            // double totalDram_uJ = samples.Sum(m => m.DramEnergy);
-            // double totalPkg_uJ  = samples.Sum(m => m.PackageEnergy);
-            //
-            // // Per-op in µJ/op (keep µJ because values are small)
-            // double dramPerOp_uJ = totalOps > 0 ? totalDram_uJ / totalOps : double.NaN;
-            // double pkgPerOp_uJ  = totalOps > 0 ? totalPkg_uJ  / totalOps : double.NaN;
-            //
-            // // Per-iteration in J (average iteration energy, then convert µJ -> J)
-            // double dramPerIter_J = samples.Any() ? samples.Average(m => m.DramEnergy)    * 1e-6 : double.NaN;
-            // double pkgPerIter_J  = samples.Any() ? samples.Average(m => m.PackageEnergy) * 1e-6 : double.NaN;
-            //
-            // yield return new Metric(EnergyMetricDescriptor.DramEnergy, dramPerOp_uJ);                 // uJ/op
-            // yield return new Metric(EnergyMetricDescriptor.PackageEnergy, pkgPerOp_uJ);               // uJ/op
-            // yield return new Metric(EnergyMetricDescriptor.DramEnergyPerIteration, dramPerIter_J);   // J / iteration
-            // yield return new Metric(EnergyMetricDescriptor.PackageEnergyPerIteration, pkgPerIter_J); // J / iteration
-            // TODO AAU: Check if this avg should be processed before and check which calucaltions are right ones
-            double dramEnergyAvg = 0.0;
-            double packageEnergyAvg = 0.0;
-            double dramIterEnergyAvg = 0.0;
-            double packageIterEnergyAvg = 0.0;
+            var samples = diagnoserResults.Measurements
+                .Where(m => m.IterationMode == IterationMode.Workload &&
+                            m.IterationStage == IterationStage.Actual)
+                .ToList();
 
-            foreach (var measurement in diagnoserResults.Measurements)
-            {
-                // TODO AAU: Check if should check the iteration mode and iteration stage
-                dramEnergyAvg += measurement.DramEnergy / measurement.Operations;
-                packageEnergyAvg += measurement.PackageEnergy / measurement.Operations;
-                dramIterEnergyAvg += measurement.DramEnergy;
-                packageIterEnergyAvg += measurement.PackageEnergy;
-            }
+            long totalOps = samples.Sum(m => m.Operations);
 
-            if (diagnoserResults.Measurements.Count > 0)
-            {
-                dramEnergyAvg /=  diagnoserResults.Measurements.Count;
-                packageEnergyAvg /=  diagnoserResults.Measurements.Count;
-                dramIterEnergyAvg /=  diagnoserResults.Measurements.Count;
-                packageIterEnergyAvg /=  diagnoserResults.Measurements.Count;
-            }
+            double totalDram = samples.Sum(m => m.DramEnergy);
+            double totalPkg  = samples.Sum(m => m.PackageEnergy);
 
-            yield return new Metric(EnergyMetricDescriptor.DramEnergy, dramEnergyAvg);
-            yield return new Metric(EnergyMetricDescriptor.PackageEnergy, packageEnergyAvg);
-            yield return new Metric(EnergyMetricDescriptor.DramEnergyPerIteration, dramIterEnergyAvg);
-            yield return new Metric(EnergyMetricDescriptor.PackageEnergyPerIteration,  packageIterEnergyAvg);
+            // uJ/op
+            double dramPerOp = totalOps > 0 ? totalDram / totalOps : double.NaN;
+            double pkgPerOp  = totalOps > 0 ? totalPkg  / totalOps : double.NaN;
+
+            // uJ/iteration (average iteration)
+            double dramPerIter = samples.Any()
+                ? samples.Average(m => m.DramEnergy)
+                : double.NaN;
+
+            double pkgPerIter = samples.Any()
+                ? samples.Average(m => m.PackageEnergy)
+                : double.NaN;
+
+            yield return new Metric(EnergyMetricDescriptor.DramEnergyPerOp, dramPerOp);
+            yield return new Metric(EnergyMetricDescriptor.PackageEnergyPerOp, pkgPerOp);
+            yield return new Metric(EnergyMetricDescriptor.DramEnergyPerIteration, dramPerIter);
+            yield return new Metric(EnergyMetricDescriptor.PackageEnergyPerIteration, pkgPerIter);
         }
 
         private class EnergyMetricDescriptor : IMetricDescriptor
         {
-            internal static readonly IMetricDescriptor DramEnergy = new EnergyMetricDescriptor("Dram", Column.DramEnergy);
-            internal static readonly IMetricDescriptor PackageEnergy = new EnergyMetricDescriptor("Package", Column.PackageEnergy);
-            internal static readonly IMetricDescriptor DramEnergyPerIteration = new EnergyMetricDescriptor("DramPerIter", Column.DramEnergyPerIter);
-            internal static readonly IMetricDescriptor PackageEnergyPerIteration = new EnergyMetricDescriptor("PackagePerIter", Column.PackageEnergyIter);
-            private EnergyMetricDescriptor(string id, string columnName)
+            internal static readonly IMetricDescriptor DramEnergyPerOp =
+                new EnergyMetricDescriptor(
+                    "AvgEnergyDramPerOp",
+                    Column.DramEnergyPerOp,
+                    "Average DRAM energy consumed per operation (µJ).");
+
+            internal static readonly IMetricDescriptor PackageEnergyPerOp =
+                new EnergyMetricDescriptor(
+                    "AvgEnergyPackagePerOp",
+                    Column.PackageEnergyPerOp,
+                    "Average CPU package energy consumed per operation (µJ).");
+
+            internal static readonly IMetricDescriptor DramEnergyPerIteration =
+                new EnergyMetricDescriptor(
+                    "AvgEnergyDramPerIter",
+                    Column.DramEnergyPerIter,
+                    "Average DRAM energy consumed per benchmark iteration (µJ).");
+
+            internal static readonly IMetricDescriptor PackageEnergyPerIteration =
+                new EnergyMetricDescriptor(
+                    "AvgEnergyPackagePerIter",
+                    Column.PackageEnergyIter,
+                    "Average CPU package energy consumed per benchmark iteration (µJ).");
+
+            private EnergyMetricDescriptor(string id, string columnName, string legend)
             {
-                Id = $"AvgEnergy{id}";
+                Id = id;
                 DisplayName = columnName;
-                Legend = $"Average energy of the CPU {id} in Joules";
+                Legend = legend;
             }
 
             public string Id { get; }
-
             public string DisplayName { get; }
             public string Legend { get; }
-            public string NumberFormat => "#0.00";
+            public string NumberFormat => "#0.00 uj";
             public UnitType UnitType => UnitType.Dimensionless;
-            public string Unit => "J";
+            public string Unit => "uJ";
             public bool TheGreaterTheBetter => false;
             public int PriorityInCategory { get; }
             public bool GetIsAvailable(Metric metric) => true;

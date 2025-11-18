@@ -57,10 +57,10 @@ namespace BenchmarkDotNet.Columns
         public const string CodeSize = "Code Size";
         public const string Exceptions = "Exceptions";
 
-        public const string DramEnergy = "Mean Dram Energy";
-        public const string PackageEnergy = "Mean Package Energy";
-        public const string DramEnergyPerIter = "Mean Iter Dram Energy";
-        public const string PackageEnergyIter = "Mean Iter Package Energy";
+        public const string DramEnergyPerOp    = "DRAM Energy (uJ/op)";
+        public const string PackageEnergyPerOp = "Package Energy (uJ/op)";
+        public const string DramEnergyPerIter  = "DRAM Energy (uJ/iter)";
+        public const string PackageEnergyIter  = "Package Energy (uJ/iter)";
 
         //Characteristics:
         public const string Id = "Id";
