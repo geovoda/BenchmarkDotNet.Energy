@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using BenchmarkDotNet.Analysers;
 using BenchmarkDotNet.Columns;
+using BenchmarkDotNet.Detectors;
 using BenchmarkDotNet.Engines;
 using BenchmarkDotNet.Exporters;
 using BenchmarkDotNet.Loggers;
@@ -30,7 +31,13 @@ namespace BenchmarkDotNet.Diagnosers
         public IEnumerable<IAnalyser> Analysers => Array.Empty<IAnalyser>();
         public void DisplayResults(ILogger logger) { }
 
-        public IEnumerable<ValidationError> Validate(ValidationParameters validationParameters) => Array.Empty<ValidationError>();
+        public IEnumerable<ValidationError> Validate(ValidationParameters validationParameters)
+        {
+            if (!OsDetector.IsLinux())
+            {
+                yield return new ValidationError(true, "The EnergyDiagnoser works only on Linux!");
+            }
+        }
 
         public void Handle(HostSignal signal, DiagnoserActionParameters parameters)
         {
