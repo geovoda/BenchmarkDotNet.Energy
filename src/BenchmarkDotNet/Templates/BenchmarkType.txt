@@ -38,6 +38,7 @@
                 TargetJob = job,
                 OperationsPerInvoke = $OperationsPerInvoke$,
                 MeasureExtraStats = $MeasureExtraStats$,
+                EnableRapl = $EnableRapl$,
                 BenchmarkName = benchmarkName
             };
 

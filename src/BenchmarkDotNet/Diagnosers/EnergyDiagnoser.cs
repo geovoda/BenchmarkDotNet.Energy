@@ -116,7 +116,8 @@ namespace BenchmarkDotNet.Diagnosers
             public string Unit => "uJ";
             public bool TheGreaterTheBetter => false;
             public int PriorityInCategory { get; }
-            public bool GetIsAvailable(Metric metric) => true;
+            public bool GetIsAvailable(Metric metric)
+                => !double.IsNaN(metric.Value) && metric.Value != 0.0;
         }
     }
 }

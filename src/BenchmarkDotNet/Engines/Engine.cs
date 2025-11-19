@@ -48,13 +48,14 @@ namespace BenchmarkDotNet.Engines
         private readonly List<Measurement> jittingMeasurements = new(10);
         private readonly bool includeExtraStats;
         private readonly Random random;
+        private readonly bool enableRapl;
 
         internal Engine(
             IHost host,
             IResolver resolver,
             Action dummy1Action, Action dummy2Action, Action dummy3Action, Action<long> overheadAction, Action<long> workloadAction, Job targetJob,
             Action globalSetupAction, Action globalCleanupAction, Action iterationSetupAction, Action iterationCleanupAction, long operationsPerInvoke,
-            bool includeExtraStats, string benchmarkName)
+            bool includeExtraStats, string benchmarkName, bool enableRapl)
         {
 
             Host = host;
@@ -81,9 +82,15 @@ namespace BenchmarkDotNet.Engines
             EvaluateOverhead = targetJob.ResolveValue(AccuracyMode.EvaluateOverheadCharacteristic, Resolver);
             MemoryRandomization = targetJob.ResolveValue(RunMode.MemoryRandomizationCharacteristic, Resolver);
 
+            this.enableRapl = enableRapl;
             Rapl = new RAPL();
-            // Rapl.AddDRAMSensor();
-            Rapl.AddPackageSensor();
+
+            if (enableRapl)
+            {
+
+                // Rapl.AddDRAMSensor();
+                Rapl.AddPackageSensor();
+            }
 
             random = new Random(12345); // we are using constant seed to try to get repeatable results
         }
@@ -222,12 +229,21 @@ namespace BenchmarkDotNet.Engines
         [MethodImpl(MethodImplOptions.NoInlining | CodeGenHelper.AggressiveOptimizationOption)]
         private (ClockSpan, double dramEnergy, double packageEnergy) Measure(Action<long> action, long invokeCount)
         {
+            if (!enableRapl)
+            {
+                // Time-only path
+                var clock = Clock.Start();
+                action(invokeCount);
+                var clockSpanNoEnergy = clock.GetElapsed();
+                return (clockSpanNoEnergy, double.NaN, double.NaN);
+            }
+
             Rapl.Start();
-            var clock = Clock.Start();
+            var clockWithEnergy = Clock.Start();
 
             action(invokeCount);
 
-            var clockSpan = clock.GetElapsed();
+            var clockSpan = clockWithEnergy.GetElapsed();
             Rapl.End();
 
             var dramEnergy = Rapl.GetDeviceResult("dram");

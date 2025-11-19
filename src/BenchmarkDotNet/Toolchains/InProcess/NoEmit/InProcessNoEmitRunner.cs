@@ -147,7 +147,8 @@ namespace BenchmarkDotNet.Toolchains.InProcess.NoEmit
                     TargetJob = job,
                     OperationsPerInvoke = target.OperationsPerInvoke,
                     MeasureExtraStats = benchmarkCase.Config.HasExtraStatsDiagnoser(),
-                    BenchmarkName = FullNameProvider.GetBenchmarkName(benchmarkCase)
+                    BenchmarkName = FullNameProvider.GetBenchmarkName(benchmarkCase),
+                    EnableRapl = benchmarkCase.Config.HasEnergyDiagnoser()
                 };
 
                 using (var engine = job

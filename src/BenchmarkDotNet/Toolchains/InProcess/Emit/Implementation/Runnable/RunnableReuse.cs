@@ -102,7 +102,8 @@ namespace BenchmarkDotNet.Toolchains.InProcess.Emit.Implementation
                 TargetJob = benchmarkCase.Job,
                 OperationsPerInvoke = benchmarkCase.Descriptor.OperationsPerInvoke,
                 MeasureExtraStats = benchmarkCase.Config.HasExtraStatsDiagnoser(),
-                BenchmarkName = FullNameProvider.GetBenchmarkName(benchmarkCase)
+                BenchmarkName = FullNameProvider.GetBenchmarkName(benchmarkCase),
+                EnableRapl = benchmarkCase.Config.HasEnergyDiagnoser()
             };
             return engineParameters;
         }

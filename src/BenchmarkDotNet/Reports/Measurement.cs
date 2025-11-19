@@ -118,6 +118,10 @@ namespace BenchmarkDotNet.Reports
             builder.Append("/op");
             builder.Append(", ");
 
+            // If we have no energy info at all (RAPL disabled), just stop here.
+            if (double.IsNaN(PackageEnergy) && double.IsNaN(DramEnergy))
+                return builder.ToString();
+
             builder.Append(PackageEnergy.ToString("0.00", MainCultureInfo).ToAscii());
             builder.Append(' ');
             builder.Append(PackageJSymbol);
