@@ -9,7 +9,7 @@ namespace BenchmarkDotNet.Helpers.RAPL
     public abstract class DeviceAPI
     {
         private List<int> _socketIds;
-        private List<string> _sysFiles;
+        private List<(string, double)> _sysFiles;
 
         private List<int> GetCpus()
         {
@@ -68,7 +68,7 @@ namespace BenchmarkDotNet.Helpers.RAPL
             this._sysFiles = this.openRAPLFiles();
         }
 
-        public abstract List<string> openRAPLFiles();
+        public abstract List<(string, double)> openRAPLFiles();
 
         public virtual List<(string dirName, int raplId)> GetSocketDirectoryNames()
         {
@@ -106,12 +106,14 @@ namespace BenchmarkDotNet.Helpers.RAPL
         {
             var result = Enumerable.Range(0, this._socketIds.Count).Select(i => -1.0).ToList();
             for (int i = 0; i < _sysFiles.Count; i++){
-                var deviceFile = this._sysFiles[i];
+                var deviceFile = this._sysFiles[i].Item1;
                 //TODO: Test om der er mærkbar forskel ved at holde filen åben og læse linjen på ny
                 if (double.TryParse(File.ReadAllText(deviceFile), out double energyVal))
                     result[this._socketIds[i]] = energyVal;
             }
             return result;
         }
+
+        virtual public double GetMaxEnergyValue(int i) => _sysFiles[i].Item2;
     }
 }

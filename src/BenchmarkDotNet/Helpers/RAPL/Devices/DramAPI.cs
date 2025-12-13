@@ -9,11 +9,11 @@ namespace BenchmarkDotNet.Helpers.RAPL.Devices
     {
         public DramAPI(List<int> socketIds = null) : base(socketIds) {}
 
-        public override List<string> openRAPLFiles()
+        public override List<(string, double)> openRAPLFiles()
         {
             List<(string, int)> socketDirectoryNames = this.GetSocketDirectoryNames();
 
-            string getDramFile(string directoryName, int raplSocketId)
+            (string, double) getDramFile(string directoryName, int raplSocketId)
             {
                 int raplDeviceId = 0;
                 while (Directory.Exists(directoryName + "/intel-rapl:" + raplSocketId + ":" + raplDeviceId))
@@ -21,7 +21,10 @@ namespace BenchmarkDotNet.Helpers.RAPL.Devices
                     var dirName = directoryName + "/intel-rapl:" + raplSocketId + ":" + raplDeviceId;
                     var content = File.ReadAllText(dirName + "/name").Trim();
                     if (content.Equals("dram"))
-                        return dirName + "/energy_uj";
+                    {
+                        double maxEnergyRange = double.Parse(File.ReadAllText(dirName + "/max_energy_range_uj"));
+                        return (dirName + "/energy_uj", maxEnergyRange);
+                    }
 
                     raplDeviceId += 1;
                 }
@@ -29,7 +32,7 @@ namespace BenchmarkDotNet.Helpers.RAPL.Devices
                 throw new Exception("PyRAPLCantInitDeviceAPI"); //TODO: Proper exceptions
             }
 
-            List<string> raplFiles = new List<string>();
+            List<(string, double)> raplFiles = new List<(string, double)>();
             foreach (var (socketDirectoryName, raplSocketId) in socketDirectoryNames)
             {
                 raplFiles.Add(getDramFile(socketDirectoryName, raplSocketId));
