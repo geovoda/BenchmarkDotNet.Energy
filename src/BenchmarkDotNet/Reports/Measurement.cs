@@ -116,11 +116,12 @@ namespace BenchmarkDotNet.Reports
 
             builder.Append(GetAverageTime().ToDefaultString("0.0000").ToAscii());
             builder.Append("/op");
-            builder.Append(", ");
 
             // If we have no energy info at all (RAPL disabled), just stop here.
             if (double.IsNaN(PackageEnergy) && double.IsNaN(DramEnergy))
                 return builder.ToString();
+
+            builder.Append(", ");
 
             builder.Append(PackageEnergy.ToString("0.00", MainCultureInfo).ToAscii());
             builder.Append(' ');
@@ -178,8 +179,8 @@ namespace BenchmarkDotNet.Reports
                 var measurementsInfoSplit = measurementsInfo.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
                 long op = 1L;
                 double ns = double.PositiveInfinity;
-                double dramEnergy = 0.0;
-                double packageEnergy = 0.0;
+                double dramEnergy = double.NaN;
+                double packageEnergy = double.NaN;
                 foreach (string item in measurementsInfoSplit)
                 {
                     var measurementSplit = item.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
