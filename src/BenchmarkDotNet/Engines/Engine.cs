@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using BenchmarkDotNet.Characteristics;
 using BenchmarkDotNet.Environments;
+using BenchmarkDotNet.Helpers.RAPL;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Mathematics;
 using BenchmarkDotNet.Portability;
@@ -36,22 +37,25 @@ namespace BenchmarkDotNet.Engines
         [PublicAPI] public string BenchmarkName { get; }
 
         private IClock Clock { get; }
+
         private bool ForceGcCleanups { get; }
         private int UnrollFactor { get; }
         private RunStrategy Strategy { get; }
         private bool EvaluateOverhead { get; }
         private bool MemoryRandomization { get; }
+        private RAPL Rapl { get; }
 
         private readonly List<Measurement> jittingMeasurements = new(10);
         private readonly bool includeExtraStats;
         private readonly Random random;
+        private readonly bool enableRapl;
 
         internal Engine(
             IHost host,
             IResolver resolver,
             Action dummy1Action, Action dummy2Action, Action dummy3Action, Action<long> overheadAction, Action<long> workloadAction, Job targetJob,
             Action globalSetupAction, Action globalCleanupAction, Action iterationSetupAction, Action iterationCleanupAction, long operationsPerInvoke,
-            bool includeExtraStats, string benchmarkName)
+            bool includeExtraStats, string benchmarkName, bool enableRapl)
         {
 
             Host = host;
@@ -78,10 +82,21 @@ namespace BenchmarkDotNet.Engines
             EvaluateOverhead = targetJob.ResolveValue(AccuracyMode.EvaluateOverheadCharacteristic, Resolver);
             MemoryRandomization = targetJob.ResolveValue(RunMode.MemoryRandomizationCharacteristic, Resolver);
 
+            this.enableRapl = enableRapl;
+            Rapl = new RAPL();
+
+            if (enableRapl)
+            {
+
+                // Rapl.AddDRAMSensor();
+                Rapl.AddPackageSensor();
+            }
+
             random = new Random(12345); // we are using constant seed to try to get repeatable results
         }
 
         public void Dispose()
+
         {
             try
             {
@@ -172,7 +187,7 @@ namespace BenchmarkDotNet.Engines
             if (EngineEventSource.Log.IsEnabled())
                 EngineEventSource.Log.IterationStart(data.IterationMode, data.IterationStage, totalOperations);
 
-            var clockSpan = randomizeMemory
+            var (clockSpan, dramEnergy, packageEnergy) = randomizeMemory
                 ? MeasureWithRandomStack(action, invokeCount / unrollFactor)
                 : Measure(action, invokeCount / unrollFactor);
 
@@ -188,7 +203,7 @@ namespace BenchmarkDotNet.Engines
             GcCollect();
 
             // Results
-            var measurement = new Measurement(0, data.IterationMode, data.IterationStage, data.Index, totalOperations, clockSpan.GetNanoseconds());
+            var measurement = new Measurement(0, data.IterationMode, data.IterationStage, data.Index, totalOperations, clockSpan.GetNanoseconds(), packageEnergy, dramEnergy);
             WriteLine(measurement.ToString());
             if (measurement.IterationStage == IterationStage.Jitting)
                 jittingMeasurements.Add(measurement);
@@ -200,7 +215,7 @@ namespace BenchmarkDotNet.Engines
         // resulting in unexpected measurements on some AMD cpus,
         // even if the stackalloc branch isn't executed. (#2366)
         [MethodImpl(MethodImplOptions.NoInlining | CodeGenHelper.AggressiveOptimizationOption)]
-        private unsafe ClockSpan MeasureWithRandomStack(Action<long> action, long invokeCount)
+        private unsafe (ClockSpan, double dramEnergy, double packageEnergy)  MeasureWithRandomStack(Action<long> action, long invokeCount)
         {
             byte* stackMemory = stackalloc byte[random.Next(32)];
             var clockSpan = Measure(action, invokeCount);
@@ -212,11 +227,29 @@ namespace BenchmarkDotNet.Engines
         private unsafe void Consume(byte* _) { }
 
         [MethodImpl(MethodImplOptions.NoInlining | CodeGenHelper.AggressiveOptimizationOption)]
-        private ClockSpan Measure(Action<long> action, long invokeCount)
+        private (ClockSpan, double dramEnergy, double packageEnergy) Measure(Action<long> action, long invokeCount)
         {
-            var clock = Clock.Start();
+            if (!enableRapl)
+            {
+                // Time-only path
+                var clock = Clock.Start();
+                action(invokeCount);
+                var clockSpanNoEnergy = clock.GetElapsed();
+                return (clockSpanNoEnergy, double.NaN, double.NaN);
+            }
+
+            Rapl.Start();
+            var clockWithEnergy = Clock.Start();
+
             action(invokeCount);
-            return clock.GetElapsed();
+
+            var clockSpan = clockWithEnergy.GetElapsed();
+            Rapl.End();
+
+            var dramEnergy = Rapl.GetDeviceResult("dram");
+            var packageEnergy = Rapl.GetDeviceResult("package");
+
+            return (clockSpan, dramEnergy, packageEnergy);
         }
 
         private (GcStats, ThreadingStats, double) GetExtraStats(IterationData data)

@@ -103,6 +103,8 @@ namespace BenchmarkDotNet.Exporters.Csv
             columns.Add(new MeasurementColumn("Measurement_Nanoseconds", (summary, report, m) => m.Nanoseconds.ToString("0.##", summary.GetCultureInfo())));
             columns.Add(new MeasurementColumn("Measurement_Operations", (summary, report, m) => m.Operations.ToString()));
             columns.Add(new MeasurementColumn("Measurement_Value", (summary, report, m) => (m.Nanoseconds / m.Operations).ToString("0.##", summary.GetCultureInfo())));
+            columns.Add(new MeasurementColumn("Measurement_PackageEnergy", (summary, report, m) => m.PackageEnergy.ToString("0.##", summary.GetCultureInfo())));
+            columns.Add(new MeasurementColumn("Measurement_PackageEnergyPerOperation", (summary, report, m) => (m.PackageEnergy / m.Operations).ToString("0.##", summary.GetCultureInfo())));
 
             return columns.ToArray();
         }
