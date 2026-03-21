@@ -109,13 +109,17 @@ namespace BenchmarkDotNet.Diagnosers
                 yield return new Metric(EnergyMetricDescriptor.PackageEnergyPerOp(i), pkgPerOp);
                 yield return new Metric(EnergyMetricDescriptor.UncoreEnergyPerOp(i), uncorePerOp);
                 yield return new Metric(EnergyMetricDescriptor.CoreEnergyPerOp(i), corePerOp);
-                yield return new Metric(EnergyMetricDescriptor.PsysEnergyPerOp, psysPerOp);
 
                 yield return new Metric(EnergyMetricDescriptor.DramEnergyPerIteration(i), dramPerIter);
                 yield return new Metric(EnergyMetricDescriptor.PackageEnergyPerIteration(i), pkgPerIter);
                 yield return new Metric(EnergyMetricDescriptor.UncoreEnergyPerIteration(i), uncorePerIter);
                 yield return new Metric(EnergyMetricDescriptor.CoreEnergyPerIteration(i), corePerIter);
-                yield return new Metric(EnergyMetricDescriptor.PsysEnergyPerIteration, psysPerIter);
+
+                if (!double.IsNaN(psysPerOp) && !double.IsNaN(psysPerIter))
+                {
+                    yield return new Metric(EnergyMetricDescriptor.PsysEnergyPerOp, psysPerOp);
+                    yield return new Metric(EnergyMetricDescriptor.PsysEnergyPerIteration, psysPerIter);
+                }
 
                 yield return new Metric(EnergyMetricDescriptor.PackageEnergyPerOpStdDev(i), pkgPerOpStdDev);
                 yield return new Metric(EnergyMetricDescriptor.PackageEnergyPerOpCvPct(i), pkgPerOpCvPct);
@@ -196,19 +200,19 @@ namespace BenchmarkDotNet.Diagnosers
 
             internal static IMetricDescriptor UncoreEnergyPerIteration(int socketId) =>
                 new EnergyMetricDescriptor(
-                    $"AvgEnergyPackagePerIter{socketId}",
+                    $"AvgEnergyUncorePerIter{socketId}",
                     string.Format(Column.UncoreEnergyPerIter, socketId),
                     $"Average CPU uncore energy consumed per benchmark iteration (uJ) on socket {socketId}.");
 
             internal static IMetricDescriptor CoreEnergyPerIteration(int socketId) =>
                 new EnergyMetricDescriptor(
-                    $"AvgEnergyPackagePerIter{socketId}",
+                    $"AvgEnergyCorePerIter{socketId}",
                     string.Format(Column.CoreEnergyPerIter, socketId),
                     $"Average CPU core energy consumed per benchmark iteration (uJ) on socket {socketId}.");
 
             internal static readonly IMetricDescriptor PsysEnergyPerIteration =
                 new EnergyMetricDescriptor(
-                    "AvgEnergyPackagePerIter",
+                    "AvgEnergyPsysPerIter",
                     Column.PsysEnergyPerIter,
                     "Average psys energy consumed per benchmark iteration (uJ).");
 
