@@ -8,8 +8,8 @@ namespace BenchmarkDotNet.Helpers.RAPL
 {
     public abstract class DeviceAPI
     {
-        private List<int> _socketIds;
-        protected List<(string filePath, double maxEnergyRange)> _sysFiles;
+        private List<int> socketIds;
+        protected List<(string filePath, double maxEnergyRange)> SysFiles;
         private const string RaplDir = "/sys/class/powercap/intel-rapl/";
 
         public string GetRaplDir()
@@ -57,7 +57,7 @@ namespace BenchmarkDotNet.Helpers.RAPL
         {
             List<int> allSocketIds = GetSocketIds();
             if (socketIds == null){
-                this._socketIds = allSocketIds;
+                this.socketIds = allSocketIds;
             }
             else
             {
@@ -66,12 +66,12 @@ namespace BenchmarkDotNet.Helpers.RAPL
                     if (!allSocketIds.Contains(sid))
                         throw new Exception("PyRAPLBadSocketIdException"); //TODO: Proper exceptions
 
-                    this._socketIds = socketIds;
+                    this.socketIds = socketIds;
                 }
             }
 
-            this._socketIds.Sort();
-            this._sysFiles = this.openRAPLFiles();
+            this.socketIds.Sort();
+            this.SysFiles = this.openRAPLFiles();
         }
 
         public abstract List<(string, double)> openRAPLFiles();
@@ -85,7 +85,7 @@ namespace BenchmarkDotNet.Helpers.RAPL
                     return;
                 var packageId = int.Parse(pkgStr.Split('-')[1]);
 
-                if (this._socketIds != null && !this._socketIds.Contains(packageId)){
+                if (this.socketIds != null && !this.socketIds.Contains(packageId)){
                     return;
                 }
 
@@ -101,7 +101,7 @@ namespace BenchmarkDotNet.Helpers.RAPL
                 raplId += 1;
             }
 
-            if (resultList.Count != this._socketIds.Count)
+            if (resultList.Count != this.socketIds.Count)
                 throw new Exception("PyRAPLCantInitDeviceAPI"); //TODO: Proper exceptions
 
             resultList.OrderBy(t => t.packageId);
@@ -110,18 +110,18 @@ namespace BenchmarkDotNet.Helpers.RAPL
         // Collect all results for every socket.
         virtual public List<double> Collect()
         {
-            var result = Enumerable.Range(0, this._socketIds.Count).Select(i => -1.0).ToList();
-            for (int i = 0; i < _sysFiles.Count; i++){
-                var deviceFile = this._sysFiles[i].filePath;
+            var result = Enumerable.Range(0, this.socketIds.Count).Select(i => -1.0).ToList();
+            for (int i = 0; i < SysFiles.Count; i++){
+                var deviceFile = this.SysFiles[i].filePath;
                 //TODO: Test om der er mærkbar forskel ved at holde filen åben og læse linjen på ny
                 if (double.TryParse(File.ReadAllText(deviceFile), out double energyVal))
-                    result[this._socketIds[i]] = energyVal;
+                    result[this.socketIds[i]] = energyVal;
             }
             return result;
         }
 
-        virtual public double GetMaxEnergyValue(int i) => _sysFiles[i].maxEnergyRange;
+        virtual public double GetMaxEnergyValue(int i) => SysFiles[i].maxEnergyRange;
 
-        public long GetNumSockets() => this._socketIds.Count;
+        public long GetNumSockets() => this.socketIds.Count;
     }
 }

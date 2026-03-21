@@ -34,10 +34,10 @@ namespace BenchmarkDotNet.Helpers.RAPL.Devices
         // TODO AAU: Check if this works
         public override List<double> Collect()
         {
-            if (this._sysFiles.Count == 0)
+            if (this.SysFiles.Count == 0)
                 return new List<double>() {-1};
 
-            if (double.TryParse(File.ReadAllText(_sysFiles[0].filePath), out double energyVal))
+            if (double.TryParse(File.ReadAllText(SysFiles[0].filePath), out double energyVal))
                 return new List<double> { energyVal };
 
             return new List<double>() {-1};
