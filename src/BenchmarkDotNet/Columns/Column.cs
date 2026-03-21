@@ -58,12 +58,18 @@ namespace BenchmarkDotNet.Columns
         public const string Exceptions = "Exceptions";
 
         // Energy
-        public const string PackageEnergyPerOp = "PkgE (uJ/op)";
-        public const string PackageEnergyPerOpStdDev = "StdDev (uJ/op)";
-        public const string PackageEnergyPerOpCvPct = "CV (%)";
-        public const string PackageEnergyIter = "PkgE (uJ/iter)";
-        public const string DramEnergyPerOp = "DRAM E (uJ/op)";
-        public const string DramEnergyPerIter = "DRAM E (uJ/iter)";
+        public const string PackageEnergyPerOp = "PkgE{0} (uJ/op)";
+        public const string PackageEnergyPerOpStdDev = "StdDev{0} (uJ/op)";
+        public const string PackageEnergyPerOpCvPct = "CV{0} (%)";
+        public const string PackageEnergyIter = "PkgE{0} (uJ/iter)";
+        public const string DramEnergyPerOp = "DRAM E{0} (uJ/op)";
+        public const string DramEnergyPerIter = "DRAM E{0} (uJ/iter)";
+        public const string UncoreEnergyPerOp = "Uncore E{0} (uJ/op)";
+        public const string UncoreEnergyPerIter = "Uncore E{0} (uJ/iter)";
+        public const string CoreEnergyPerOp = "Core E{0} (uJ/op)";
+        public const string CoreEnergyPerIter = "Core E{0} (uJ/iter)";
+        public const string PsysEnergyPerOp = "Psys E (uJ/op)";
+        public const string PsysEnergyPerIter = "Psys E (uJ/iter)";
 
         //Characteristics:
         public const string Id = "Id";

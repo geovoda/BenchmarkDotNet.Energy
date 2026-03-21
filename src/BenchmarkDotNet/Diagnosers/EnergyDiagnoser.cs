@@ -10,7 +10,6 @@ using BenchmarkDotNet.Loggers;
 using BenchmarkDotNet.Reports;
 using BenchmarkDotNet.Running;
 using BenchmarkDotNet.Validators;
-using Perfolizer.Metrology;
 
 namespace BenchmarkDotNet.Diagnosers
 {
@@ -51,31 +50,76 @@ namespace BenchmarkDotNet.Diagnosers
                             m.IterationStage == IterationStage.Result)
                 .ToList();
 
-            // Per-iteration uJ/op samples
-            var pkgPerOpSeries = samples.Where(m => m.Operations > 0).Select(m => m.PackageEnergy / m.Operations).ToArray();
-            var dramPerOpSeries = samples.Where(m => m.Operations > 0).Select(m => m.DramEnergy / m.Operations).ToArray();
+            if (samples.Count == 0)
+                yield break;
 
-            // Mean across iterations
-            double pkgPerOp  = pkgPerOpSeries.Length > 0 ? pkgPerOpSeries.Average()  : double.NaN;
-            double dramPerOp = dramPerOpSeries.Length > 0 ? dramPerOpSeries.Average() : double.NaN;
+            var socketCount = samples.First().EnergyMeasurements.Count;
 
-            // Variability (sample SD + CV%)
-            double pkgPerOpStdDev = StdDevSample(pkgPerOpSeries, pkgPerOp);
-            double pkgPerOpCvPct = (pkgPerOp > 0 && !double.IsNaN(pkgPerOpStdDev))
-                ? (pkgPerOpStdDev / pkgPerOp) * 100.0
-                : double.NaN;
+            for (int i = 0; i < socketCount; ++i)
+            {
+                // Per-iteration uJ/op samples
+                var pkgPerOpSeries = samples
+                    .Where(m => (m.Operations > 0 && m.EnergyMeasurements.Count > i))
+                    .Select(m => m.EnergyMeasurements[i].PackageEnergy / m.Operations)
+                    .ToArray();
 
-            // uJ/iteration (mean iteration energy)
-            double dramPerIter = samples.Any() ? samples.Average(m => m.DramEnergy) : double.NaN;
-            double pkgPerIter  = samples.Any() ? samples.Average(m => m.PackageEnergy) : double.NaN;
+                var dramPerOpSeries = samples
+                    .Where(m => (m.Operations > 0 && m.EnergyMeasurements.Count > i))
+                    .Select(m => m.EnergyMeasurements[i].DramEnergy / m.Operations)
+                    .ToArray();
 
-            yield return new Metric(EnergyMetricDescriptor.DramEnergyPerOp, dramPerOp);
-            yield return new Metric(EnergyMetricDescriptor.PackageEnergyPerOp, pkgPerOp);
-            yield return new Metric(EnergyMetricDescriptor.DramEnergyPerIteration, dramPerIter);
-            yield return new Metric(EnergyMetricDescriptor.PackageEnergyPerIteration, pkgPerIter);
+                var uncorePerOpSeries = samples
+                    .Where(m => (m.Operations > 0 && m.EnergyMeasurements.Count > i))
+                    .Select(m => m.EnergyMeasurements[i].UncoreEnergy / m.Operations)
+                    .ToArray();
 
-            yield return new Metric(EnergyMetricDescriptor.PackageEnergyPerOpStdDev, pkgPerOpStdDev);
-            yield return new Metric(EnergyMetricDescriptor.PackageEnergyPerOpCvPct, pkgPerOpCvPct);
+                var corePerOpSeries = samples
+                    .Where(m => (m.Operations > 0 && m.EnergyMeasurements.Count > i))
+                    .Select(m => m.EnergyMeasurements[i].CoreEnergy / m.Operations)
+                    .ToArray();
+
+                var psysPerOpSeries = samples
+                    .Where(m => (m.Operations > 0 && m.EnergyMeasurements.Count > i))
+                    .Select(m => m.EnergyMeasurements[i].PsysEnergy / m.Operations)
+                    .ToArray();
+
+                //var dramPerOpSeries = samples.Where(m => m.Operations > 0).Select(m => m.DramEnergy / m.Operations).ToArray();
+
+                // Mean across iterations
+                double pkgPerOp = pkgPerOpSeries.Length > 0 ? pkgPerOpSeries.Average() : double.NaN;
+                double dramPerOp = dramPerOpSeries.Length > 0 ? dramPerOpSeries.Average() : double.NaN;
+                double uncorePerOp = uncorePerOpSeries.Length > 0 ? uncorePerOpSeries.Average() : double.NaN;
+                double corePerOp = corePerOpSeries.Length > 0 ? corePerOpSeries.Average() : double.NaN;
+                double psysPerOp = psysPerOpSeries.Length > 0 ? psysPerOpSeries.Average() : double.NaN;
+
+                // Variability (sample SD + CV%)
+                double pkgPerOpStdDev = StdDevSample(pkgPerOpSeries, pkgPerOp);
+                double pkgPerOpCvPct = (pkgPerOp > 0 && !double.IsNaN(pkgPerOpStdDev))
+                    ? (pkgPerOpStdDev / pkgPerOp) * 100.0
+                    : double.NaN;
+
+                // uJ/iteration (mean iteration energy)
+                double pkgPerIter = samples.Any() ? samples.Average(m => m.EnergyMeasurements[i].PackageEnergy) : double.NaN;
+                double dramPerIter = samples.Any() ? samples.Average(m => m.EnergyMeasurements[i].DramEnergy) : double.NaN;
+                double uncorePerIter = samples.Any() ? samples.Average(m => m.EnergyMeasurements[i].UncoreEnergy) : double.NaN;
+                double corePerIter = samples.Any() ? samples.Average(m => m.EnergyMeasurements[i].CoreEnergy) : double.NaN;
+                double psysPerIter = samples.Any() ? samples.Average(m => m.EnergyMeasurements[i].PsysEnergy) : double.NaN;
+
+                yield return new Metric(EnergyMetricDescriptor.DramEnergyPerOp(i), dramPerOp);
+                yield return new Metric(EnergyMetricDescriptor.PackageEnergyPerOp(i), pkgPerOp);
+                yield return new Metric(EnergyMetricDescriptor.UncoreEnergyPerOp(i), uncorePerOp);
+                yield return new Metric(EnergyMetricDescriptor.CoreEnergyPerOp(i), corePerOp);
+                yield return new Metric(EnergyMetricDescriptor.PsysEnergyPerOp, psysPerOp);
+
+                yield return new Metric(EnergyMetricDescriptor.DramEnergyPerIteration(i), dramPerIter);
+                yield return new Metric(EnergyMetricDescriptor.PackageEnergyPerIteration(i), pkgPerIter);
+                yield return new Metric(EnergyMetricDescriptor.UncoreEnergyPerIteration(i), uncorePerIter);
+                yield return new Metric(EnergyMetricDescriptor.CoreEnergyPerIteration(i), corePerIter);
+                yield return new Metric(EnergyMetricDescriptor.PsysEnergyPerIteration, psysPerIter);
+
+                yield return new Metric(EnergyMetricDescriptor.PackageEnergyPerOpStdDev(i), pkgPerOpStdDev);
+                yield return new Metric(EnergyMetricDescriptor.PackageEnergyPerOpCvPct(i), pkgPerOpCvPct);
+            }
         }
         private static double StdDevSample(double[] values, double mean)
         {
@@ -93,44 +137,80 @@ namespace BenchmarkDotNet.Diagnosers
 
         private class EnergyMetricDescriptor : IMetricDescriptor
         {
-            internal static readonly IMetricDescriptor DramEnergyPerOp =
+            internal static IMetricDescriptor DramEnergyPerOp(int socketId) =>
                 new EnergyMetricDescriptor(
-                    "AvgEnergyDramPerOp",
-                    Column.DramEnergyPerOp,
-                    "Average DRAM energy consumed per operation (uJ).");
+                    $"AvgEnergyDramPerOp{socketId}",
+                    string.Format(Column.DramEnergyPerOp, socketId),
+                    $"Average DRAM energy consumed per operation (uJ) on socket {socketId}.");
 
-            internal static readonly IMetricDescriptor PackageEnergyPerOp =
+            internal static IMetricDescriptor PackageEnergyPerOp(int socketId) =>
+                new EnergyMetricDescriptor(
+                    $"AvgEnergyPackagePerOp{socketId}",
+                    string.Format(Column.PackageEnergyPerOp, socketId),
+                    $"Average CPU package energy consumed per operation (uJ) on socket {socketId}.");
+
+            internal static IMetricDescriptor UncoreEnergyPerOp(int socketId) =>
+                new EnergyMetricDescriptor(
+                    $"AvgEnergyUncorePerOp{socketId}",
+                    string.Format(Column.UncoreEnergyPerOp, socketId),
+                    $"Average CPU uncore energy consumed per operation (uJ) on socket {socketId}.");
+
+            internal static IMetricDescriptor CoreEnergyPerOp(int socketId) =>
+                new EnergyMetricDescriptor(
+                    $"AvgEnergyCorePerOp{socketId}",
+                    string.Format(Column.CoreEnergyPerOp, socketId),
+                    $"Average CPU core energy consumed per operation (uJ) on socket {socketId}.");
+
+            internal static readonly IMetricDescriptor PsysEnergyPerOp =
                 new EnergyMetricDescriptor(
                     "AvgEnergyPackagePerOp",
                     Column.PackageEnergyPerOp,
-                    "Average CPU package energy consumed per operation (uJ).");
+                    "Average CPU psys energy consumed per operation (uJ).");
 
-            internal static readonly IMetricDescriptor PackageEnergyPerOpStdDev =
+            internal static IMetricDescriptor PackageEnergyPerOpStdDev(int socketId) =>
                 new EnergyMetricDescriptor(
                     "PkgEPerOpStdDev",
-                    Column.PackageEnergyPerOpStdDev,
-                    "Standard deviation of package energy per operation (uJ/op).",
+                    string.Format(Column.PackageEnergyPerOpStdDev, socketId),
+                    $"Standard deviation of package energy per operation (uJ/op) on socket {socketId}.",
                     unit: "uJ");
 
-            internal static readonly IMetricDescriptor PackageEnergyPerOpCvPct =
+            internal static IMetricDescriptor PackageEnergyPerOpCvPct(int socketId) =>
                 new EnergyMetricDescriptor(
                     "PkgEPerOpCvPct",
-                    Column.PackageEnergyPerOpCvPct,
-                    "Coefficient of variation of package energy per operation (%).",
+                    string.Format(Column.PackageEnergyPerOpCvPct, socketId),
+                    $"Coefficient of variation of package energy per operation (%) on socket {socketId}.",
                     numberFormat: "#0.00", // no "uj"
                     unit: "");
 
-            internal static readonly IMetricDescriptor DramEnergyPerIteration =
+            internal static IMetricDescriptor DramEnergyPerIteration(int socketId) =>
                 new EnergyMetricDescriptor(
-                    "AvgEnergyDramPerIter",
-                    Column.DramEnergyPerIter,
-                    "Average DRAM energy consumed per benchmark iteration (uJ).");
+                    $"AvgEnergyDramPerIter{socketId}",
+                    string.Format(Column.DramEnergyPerIter, socketId),
+                    $"Average DRAM energy consumed per benchmark iteration (uJ) on socket {socketId}.");
 
-            internal static readonly IMetricDescriptor PackageEnergyPerIteration =
+            internal static IMetricDescriptor PackageEnergyPerIteration(int socketId) =>
+                new EnergyMetricDescriptor(
+                    $"AvgEnergyPackagePerIter{socketId}",
+                    string.Format(Column.PackageEnergyIter, socketId),
+                    $"Average CPU package energy consumed per benchmark iteration (uJ) on socket {socketId}.");
+
+            internal static IMetricDescriptor UncoreEnergyPerIteration(int socketId) =>
+                new EnergyMetricDescriptor(
+                    $"AvgEnergyPackagePerIter{socketId}",
+                    string.Format(Column.UncoreEnergyPerIter, socketId),
+                    $"Average CPU uncore energy consumed per benchmark iteration (uJ) on socket {socketId}.");
+
+            internal static IMetricDescriptor CoreEnergyPerIteration(int socketId) =>
+                new EnergyMetricDescriptor(
+                    $"AvgEnergyPackagePerIter{socketId}",
+                    string.Format(Column.CoreEnergyPerIter, socketId),
+                    $"Average CPU core energy consumed per benchmark iteration (uJ) on socket {socketId}.");
+
+            internal static readonly IMetricDescriptor PsysEnergyPerIteration =
                 new EnergyMetricDescriptor(
                     "AvgEnergyPackagePerIter",
-                    Column.PackageEnergyIter,
-                    "Average CPU package energy consumed per benchmark iteration (uJ).");
+                    Column.PsysEnergyPerIter,
+                    "Average psys energy consumed per benchmark iteration (uJ).");
 
             private EnergyMetricDescriptor(string id, string columnName, string legend,
                 string numberFormat = "#0.00 uj", string unit = "uJ")

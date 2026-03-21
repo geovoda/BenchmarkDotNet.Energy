@@ -50,7 +50,7 @@ namespace BenchmarkDotNet.Tests.Mocks
         public Measurement RunIteration(IterationData data)
         {
             double nanoseconds = measure(data).Nanoseconds;
-            var measurement = new Measurement(1, data.IterationMode, data.IterationStage, data.Index, data.InvokeCount * OperationsPerInvoke, nanoseconds);
+            var measurement = new Measurement(1, data.IterationMode, data.IterationStage, data.Index, data.InvokeCount * OperationsPerInvoke, nanoseconds, new List<EnergyMeasurement>());
             WriteLine(measurement.ToString());
             return measurement;
         }

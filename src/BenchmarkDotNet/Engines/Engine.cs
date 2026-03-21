@@ -87,9 +87,7 @@ namespace BenchmarkDotNet.Engines
 
             if (enableRapl)
             {
-
-                // Rapl.AddDRAMSensor();
-                Rapl.AddPackageSensor();
+                Rapl.LoadAllSensors();
             }
 
             random = new Random(12345); // we are using constant seed to try to get repeatable results
@@ -187,7 +185,7 @@ namespace BenchmarkDotNet.Engines
             if (EngineEventSource.Log.IsEnabled())
                 EngineEventSource.Log.IterationStart(data.IterationMode, data.IterationStage, totalOperations);
 
-            var (clockSpan, dramEnergy, packageEnergy) = randomizeMemory
+            var (clockSpan, energyMeasurements) = randomizeMemory
                 ? MeasureWithRandomStack(action, invokeCount / unrollFactor)
                 : Measure(action, invokeCount / unrollFactor);
 
@@ -203,7 +201,7 @@ namespace BenchmarkDotNet.Engines
             GcCollect();
 
             // Results
-            var measurement = new Measurement(0, data.IterationMode, data.IterationStage, data.Index, totalOperations, clockSpan.GetNanoseconds(), packageEnergy, dramEnergy);
+            var measurement = new Measurement(0, data.IterationMode, data.IterationStage, data.Index, totalOperations, clockSpan.GetNanoseconds(), energyMeasurements);
             WriteLine(measurement.ToString());
             if (measurement.IterationStage == IterationStage.Jitting)
                 jittingMeasurements.Add(measurement);
@@ -215,7 +213,7 @@ namespace BenchmarkDotNet.Engines
         // resulting in unexpected measurements on some AMD cpus,
         // even if the stackalloc branch isn't executed. (#2366)
         [MethodImpl(MethodImplOptions.NoInlining | CodeGenHelper.AggressiveOptimizationOption)]
-        private unsafe (ClockSpan, double dramEnergy, double packageEnergy)  MeasureWithRandomStack(Action<long> action, long invokeCount)
+        private unsafe (ClockSpan, List<EnergyMeasurement>)  MeasureWithRandomStack(Action<long> action, long invokeCount)
         {
             byte* stackMemory = stackalloc byte[random.Next(32)];
             var clockSpan = Measure(action, invokeCount);
@@ -227,7 +225,7 @@ namespace BenchmarkDotNet.Engines
         private unsafe void Consume(byte* _) { }
 
         [MethodImpl(MethodImplOptions.NoInlining | CodeGenHelper.AggressiveOptimizationOption)]
-        private (ClockSpan, double dramEnergy, double packageEnergy) Measure(Action<long> action, long invokeCount)
+        private (ClockSpan, List<EnergyMeasurement>) Measure(Action<long> action, long invokeCount)
         {
             if (!enableRapl)
             {
@@ -235,7 +233,7 @@ namespace BenchmarkDotNet.Engines
                 var clock = Clock.Start();
                 action(invokeCount);
                 var clockSpanNoEnergy = clock.GetElapsed();
-                return (clockSpanNoEnergy, double.NaN, double.NaN);
+                return (clockSpanNoEnergy, new List<EnergyMeasurement>());
             }
 
             Rapl.Start();
@@ -246,10 +244,9 @@ namespace BenchmarkDotNet.Engines
             var clockSpan = clockWithEnergy.GetElapsed();
             Rapl.End();
 
-            var dramEnergy = Rapl.GetDeviceResult("dram");
-            var packageEnergy = Rapl.GetDeviceResult("package");
+            var energyMeasurements = Rapl.GetEnergyMeasurements();
 
-            return (clockSpan, dramEnergy, packageEnergy);
+            return (clockSpan, energyMeasurements);
         }
 
         private (GcStats, ThreadingStats, double) GetExtraStats(IterationData data)

@@ -105,11 +105,11 @@ namespace BenchmarkDotNet.Tests.Reports
             var buildResult = BuildResult.Success(GenerateResult.Success(ArtifactsPaths.Empty, Array.Empty<string>()));
             var measurements = new List<Measurement>
             {
-                new Measurement(1, IterationMode.Workload, IterationStage.Result, 1, 1, measurementValue),
-                new Measurement(1, IterationMode.Workload, IterationStage.Result, 2, 1, measurementValue + noise),
-                new Measurement(1, IterationMode.Workload, IterationStage.Result, 3, 1, measurementValue - noise),
-                new Measurement(1, IterationMode.Workload, IterationStage.Result, 4, 1, measurementValue + 2 * noise),
-                new Measurement(1, IterationMode.Workload, IterationStage.Result, 5, 1, measurementValue - 3 * noise)
+                new Measurement(1, IterationMode.Workload, IterationStage.Result, 1, 1, measurementValue, new List<EnergyMeasurement>()),
+                new Measurement(1, IterationMode.Workload, IterationStage.Result, 2, 1, measurementValue + noise, new List<EnergyMeasurement>()),
+                new Measurement(1, IterationMode.Workload, IterationStage.Result, 3, 1, measurementValue - noise, new List<EnergyMeasurement>()),
+                new Measurement(1, IterationMode.Workload, IterationStage.Result, 4, 1, measurementValue + 2 * noise, new List<EnergyMeasurement>()),
+                new Measurement(1, IterationMode.Workload, IterationStage.Result, 5, 1, measurementValue - 3 * noise, new List<EnergyMeasurement>())
             };
             var executeResult = new ExecuteResult(measurements, default, default, 0);
             return new BenchmarkReport(true, benchmarkCase, buildResult, buildResult, new List<ExecuteResult> { executeResult }, Array.Empty<Metric>());

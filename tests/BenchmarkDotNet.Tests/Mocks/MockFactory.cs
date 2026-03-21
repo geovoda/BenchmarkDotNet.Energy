@@ -118,7 +118,7 @@ namespace BenchmarkDotNet.Tests.Mocks
         {
             var buildResult = BuildResult.Success(GenerateResult.Success(ArtifactsPaths.Empty, Array.Empty<string>()));
             var measurements = Enumerable.Range(0, n)
-                .Select(index => new Measurement(1, IterationMode.Workload, IterationStage.Result, index + 1, 1, nanoseconds + index).ToString())
+                .Select(index => new Measurement(1, IterationMode.Workload, IterationStage.Result, index + 1, 1, nanoseconds + index, new List<EnergyMeasurement>()).ToString())
                 .ToList();
             var executeResult = new ExecuteResult(true, 0, default, measurements, new[] { $"// Runtime=extra output line" }, Array.Empty<string>(), 1);
             return new BenchmarkReport(true, benchmarkCase, buildResult, buildResult, new List<ExecuteResult> { executeResult }, Array.Empty<Metric>());
@@ -131,12 +131,12 @@ namespace BenchmarkDotNet.Tests.Mocks
             bool isBar = benchmarkCase.Descriptor.WorkloadMethodDisplayInfo == "Bar";
             var measurements = new List<Measurement>
             {
-                new Measurement(1, IterationMode.Workload, IterationStage.Result, 1, 1, 1),
-                new Measurement(1, IterationMode.Workload, IterationStage.Result, 2, 1, hugeSd && isFoo ? 2 : 1),
-                new Measurement(1, IterationMode.Workload, IterationStage.Result, 3, 1, hugeSd && isBar ? 3 : 1),
-                new Measurement(1, IterationMode.Workload, IterationStage.Result, 4, 1, hugeSd && isFoo ? 2 : 1),
-                new Measurement(1, IterationMode.Workload, IterationStage.Result, 5, 1, hugeSd && isBar ? 3 : 1),
-                new Measurement(1, IterationMode.Workload, IterationStage.Result, 6, 1, 1)
+                new Measurement(1, IterationMode.Workload, IterationStage.Result, 1, 1, 1, new List<EnergyMeasurement>()),
+                new Measurement(1, IterationMode.Workload, IterationStage.Result, 2, 1, hugeSd && isFoo ? 2 : 1, new List<EnergyMeasurement>()),
+                new Measurement(1, IterationMode.Workload, IterationStage.Result, 3, 1, hugeSd && isBar ? 3 : 1, new List<EnergyMeasurement>()),
+                new Measurement(1, IterationMode.Workload, IterationStage.Result, 4, 1, hugeSd && isFoo ? 2 : 1, new List<EnergyMeasurement>()),
+                new Measurement(1, IterationMode.Workload, IterationStage.Result, 5, 1, hugeSd && isBar ? 3 : 1, new List<EnergyMeasurement>()),
+                new Measurement(1, IterationMode.Workload, IterationStage.Result, 6, 1, 1, new List<EnergyMeasurement>())
             };
             var executeResult = new ExecuteResult(measurements, default, default, 0);
             return new BenchmarkReport(true, benchmarkCase, buildResult, buildResult, new List<ExecuteResult> { executeResult }, metrics);
@@ -150,26 +150,26 @@ namespace BenchmarkDotNet.Tests.Mocks
             var measurements = from i in Enumerable.Range(0, Math.Max(1, n / 9))
                                from m in isFoo ? new[]
                                {
-                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 1, 1, min), // 1
-                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 2, 1, min + ((median - min) / 2) + 1), // 3
-                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 4, 1, median), // 4
-                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 5, 1, median), // 4
-                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 5, 1, median), // 4
-                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 7, 1, median + ((max - median) / 2)), // 7
-                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 8, 1, median + ((max - median) / 2)), // 7
-                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 9, 1, max),    // 10
-                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 9, 1, max),    // 10
+                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 1, 1, min, new List<EnergyMeasurement>()), // 1
+                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 2, 1, min + ((median - min) / 2) + 1, new List<EnergyMeasurement>()), // 3
+                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 4, 1, median, new List<EnergyMeasurement>()), // 4
+                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 5, 1, median, new List<EnergyMeasurement>()), // 4
+                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 5, 1, median, new List<EnergyMeasurement>()), // 4
+                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 7, 1, median + ((max - median) / 2), new List<EnergyMeasurement>()), // 7
+                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 8, 1, median + ((max - median) / 2), new List<EnergyMeasurement>()), // 7
+                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 9, 1, max, new List<EnergyMeasurement>()),    // 10
+                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 9, 1, max, new List<EnergyMeasurement>()),    // 10
                                } : new[]
                                {
-                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 1, 1, min), // 1
-                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 1, 1, min), // 1
-                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 2, 1, min + ((median - min) / 2) + 1), // 3
-                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 2, 1, min + ((median - min) / 2) + 1), // 3
-                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 4, 1, median), // 4
-                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 5, 1, median), // 4
-                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 5, 1, median), // 4
-                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 7, 1, median + ((max - median) / 2)), // 7
-                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 9, 1, max),    // 10
+                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 1, 1, min, new List<EnergyMeasurement>()), // 1
+                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 1, 1, min, new List<EnergyMeasurement>()), // 1
+                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 2, 1, min + ((median - min) / 2) + 1, new List<EnergyMeasurement>()), // 3
+                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 2, 1, min + ((median - min) / 2) + 1, new List<EnergyMeasurement>()), // 3
+                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 4, 1, median, new List<EnergyMeasurement>()), // 4
+                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 5, 1, median, new List<EnergyMeasurement>()), // 4
+                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 5, 1, median, new List<EnergyMeasurement>()), // 4
+                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 7, 1, median + ((max - median) / 2), new List<EnergyMeasurement>()), // 7
+                                    new Measurement(1, IterationMode.Workload, IterationStage.Result, 9, 1, max, new List<EnergyMeasurement>()),    // 10
                                }
                                select m;
             var executeResult = new ExecuteResult(measurements.Take(n).ToList(), default, default, 0);

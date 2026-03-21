@@ -22,10 +22,19 @@ namespace BenchmarkDotNet.Reports
 
         private const string NsSymbol = "ns";
         private const string OpSymbol = "op";
-        private const string DramJSymbol = "uJdram";
-        private const string PackageJSymbol = "uJpkg";
 
-        private static Measurement Error() => new Measurement(-1, IterationMode.Unknown, IterationStage.Unknown, 0, 0, 0, 0, 0);
+        private struct EnergySymbols
+        {
+            public const string SocketSymbol = "socket";
+            public const string DramJSymbol = "uJdram";
+            public const string PackageJSymbol = "uJpkg";
+            public const string CoreJSymbol = "uJcore";
+            public const string UncoreJSymbol = "uJuncore";
+            public const string PsysJSymbol = "uJpsys";
+            public const string CpuCelsiusTemperatureSymbol = "degCCpu";
+        }
+
+        private static Measurement Error() => new Measurement(-1, IterationMode.Unknown, IterationStage.Unknown, 0, 0, 0, new List<EnergyMeasurement> { EnergyMeasurement.Error(0) });
 
         private static readonly int IterationInfoNameMaxWidth
             = Enum.GetNames(typeof(IterationMode)).Max(text => text.Length) + Enum.GetNames(typeof(IterationStage)).Max(text => text.Length);
@@ -49,14 +58,9 @@ namespace BenchmarkDotNet.Reports
         public double Nanoseconds { get; }
 
         /// <summary>
-        /// Gets the package energy consumed to perform all operations.
+        /// Gets the energy consumed to perform all operations.
         /// </summary>
-        public double PackageEnergy { get; }
-
-        /// <summary>
-        /// Gets the dram energy consumed to perform all operations.
-        /// </summary>
-        public double DramEnergy { get; }
+        public List<EnergyMeasurement> EnergyMeasurements { get; }
 
         /// <summary>
         /// Creates an instance of <see cref="Measurement"/> struct.
@@ -67,14 +71,12 @@ namespace BenchmarkDotNet.Reports
         /// <param name="iterationIndex"></param>
         /// <param name="operations">The number of operations performed.</param>
         /// <param name="nanoseconds">The total number of nanoseconds it took to perform all operations.</param>
-        /// <param name="packageEnergy">The CPU package energy consumed to perform all operations.</param>
-        /// <param name="dramEnergy">The dram energy consumed to perform all operations.</param>
-        public Measurement(int launchIndex, IterationMode iterationMode, IterationStage iterationStage, int iterationIndex, long operations, double nanoseconds, double packageEnergy, double dramEnergy)
+        /// <param name="energyMeasurements">The energy consumed to perform all operations grouped per cpu Socket id.</param>
+        public Measurement(int launchIndex, IterationMode iterationMode, IterationStage iterationStage, int iterationIndex, long operations, double nanoseconds, List<EnergyMeasurement> energyMeasurements)
         {
             Operations = operations;
             Nanoseconds = nanoseconds;
-            PackageEnergy = packageEnergy;
-            DramEnergy = dramEnergy;
+            EnergyMeasurements = energyMeasurements;
             LaunchIndex = launchIndex;
             IterationMode = iterationMode;
             IterationStage = iterationStage;
@@ -118,19 +120,68 @@ namespace BenchmarkDotNet.Reports
             builder.Append("/op");
 
             // If we have no energy info at all (RAPL disabled), just stop here.
-            if (double.IsNaN(PackageEnergy) && double.IsNaN(DramEnergy))
+            if (EnergyMeasurements.Count == 0 || EnergyMeasurements.All(em => double.IsNaN(em.PackageEnergy) && double.IsNaN(em.DramEnergy) &&
+                double.IsNaN(em.CoreEnergy) && double.IsNaN(em.UncoreEnergy) && double.IsNaN(em.PsysEnergy) &&
+                double.IsNaN(em.AverageCpuTemperature)))
                 return builder.ToString();
 
             builder.Append(", ");
 
-            builder.Append(PackageEnergy.ToString("0.00", MainCultureInfo).ToAscii());
-            builder.Append(' ');
-            builder.Append(PackageJSymbol);
-            builder.Append(", ");
+            foreach (var energyMeasurement in EnergyMeasurements)
+            {
+                builder.Append(energyMeasurement.PackageEnergy.ToString("0.00", MainCultureInfo).ToAscii());
+                builder.Append(' ');
+                builder.Append(EnergySymbols.PackageJSymbol);
+                builder.Append("_");
+                builder.Append(EnergySymbols.SocketSymbol);
+                builder.Append("_");
+                builder.Append(energyMeasurement.SocketId);
+                builder.Append(", ");
 
-            builder.Append(DramEnergy.ToString("0.00", MainCultureInfo).ToAscii());
-            builder.Append(' ');
-            builder.Append(DramJSymbol);
+                builder.Append(energyMeasurement.DramEnergy.ToString("0.00", MainCultureInfo).ToAscii());
+                builder.Append(' ');
+                builder.Append(EnergySymbols.DramJSymbol);
+                builder.Append("_");
+                builder.Append(EnergySymbols.SocketSymbol);
+                builder.Append("_");
+                builder.Append(energyMeasurement.SocketId);
+                builder.Append(", ");
+
+                builder.Append(energyMeasurement.CoreEnergy.ToString("0.00", MainCultureInfo).ToAscii());
+                builder.Append(' ');
+                builder.Append(EnergySymbols.CoreJSymbol);
+                builder.Append("_");
+                builder.Append(EnergySymbols.SocketSymbol);
+                builder.Append("_");
+                builder.Append(energyMeasurement.SocketId);
+                builder.Append(", ");
+
+                builder.Append(energyMeasurement.UncoreEnergy.ToString("0.00", MainCultureInfo).ToAscii());
+                builder.Append(' ');
+                builder.Append(EnergySymbols.UncoreJSymbol);
+                builder.Append("_");
+                builder.Append(EnergySymbols.SocketSymbol);
+                builder.Append("_");
+                builder.Append(energyMeasurement.SocketId);
+                builder.Append(", ");
+
+                builder.Append(energyMeasurement.PsysEnergy.ToString("0.00", MainCultureInfo).ToAscii());
+                builder.Append(' ');
+                builder.Append(EnergySymbols.PsysJSymbol);
+                builder.Append("_");
+                builder.Append(EnergySymbols.SocketSymbol);
+                builder.Append("_");
+                builder.Append(energyMeasurement.SocketId);
+                builder.Append(", ");
+
+                builder.Append(energyMeasurement.AverageCpuTemperature.ToString("0.00", MainCultureInfo).ToAscii());
+                builder.Append(' ');
+                builder.Append(EnergySymbols.CpuCelsiusTemperatureSymbol);
+                builder.Append("_");
+                builder.Append(EnergySymbols.SocketSymbol);
+                builder.Append("_");
+                builder.Append(energyMeasurement.SocketId);
+            }
 
             return builder.ToString();
         }
@@ -179,13 +230,16 @@ namespace BenchmarkDotNet.Reports
                 var measurementsInfoSplit = measurementsInfo.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
                 long op = 1L;
                 double ns = double.PositiveInfinity;
-                double dramEnergy = double.NaN;
-                double packageEnergy = double.NaN;
+
+                // Dictionary to store energy measurements grouped by socket ID
+                var socketMeasurements = new Dictionary<int, Dictionary<string, double>>();
+
                 foreach (string item in measurementsInfoSplit)
                 {
                     var measurementSplit = item.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
                     string value = measurementSplit[0];
                     string unit = measurementSplit[1];
+
                     switch (unit)
                     {
                         case NsSymbol:
@@ -194,15 +248,57 @@ namespace BenchmarkDotNet.Reports
                         case OpSymbol:
                             op = long.Parse(value, MainCultureInfo);
                             break;
-                        case PackageJSymbol:
-                            packageEnergy = double.Parse(value, MainCultureInfo);
-                            break;
-                        case DramJSymbol:
-                            dramEnergy = double.Parse(value, MainCultureInfo);
-                            break;
+                    }
+
+                    if (!unit.Contains(EnergySymbols.SocketSymbol))
+                        continue;
+
+                    var energySplit = unit.Split(new[] { '_' }, StringSplitOptions.RemoveEmptyEntries);
+                    string energyUnit = energySplit[0];
+                    int socketId = int.Parse(energySplit[2]);
+
+                    // Initialize socket measurements if not exists
+                    if (!socketMeasurements.ContainsKey(socketId))
+                    {
+                        socketMeasurements[socketId] = new Dictionary<string, double>
+                        {
+                            { EnergySymbols.PackageJSymbol, double.NaN },
+                            { EnergySymbols.DramJSymbol, double.NaN },
+                            { EnergySymbols.CoreJSymbol, double.NaN },
+                            { EnergySymbols.UncoreJSymbol, double.NaN },
+                            { EnergySymbols.PsysJSymbol, double.NaN },
+                            { EnergySymbols.CpuCelsiusTemperatureSymbol, double.NaN }
+                        };
+                    }
+
+                    // Parse and store the energy value
+                    double energyValue = double.Parse(value, MainCultureInfo);
+                    if (socketMeasurements[socketId].ContainsKey(energyUnit))
+                    {
+                        socketMeasurements[socketId][energyUnit] = energyValue;
                     }
                 }
-                return new Measurement(processIndex, iterationMode, iterationStage, iterationIndex, op, ns, packageEnergy, dramEnergy);
+
+                // Convert dictionary to list of EnergyMeasurement objects
+                var energyMeasurements = new List<EnergyMeasurement>();
+                foreach (var kvp in socketMeasurements.OrderBy(x => x.Key))
+                {
+                    int socketId = kvp.Key;
+                    var measurements = kvp.Value;
+
+                    var energyMeasurement = new EnergyMeasurement(
+                        socketId,
+                        measurements[EnergySymbols.PackageJSymbol],
+                        measurements[EnergySymbols.DramJSymbol],
+                        measurements[EnergySymbols.CoreJSymbol],
+                        measurements[EnergySymbols.UncoreJSymbol],
+                        measurements[EnergySymbols.PsysJSymbol],
+                        measurements[EnergySymbols.CpuCelsiusTemperatureSymbol]
+                    );
+                    energyMeasurements.Add(energyMeasurement);
+                }
+
+                return new Measurement(processIndex, iterationMode, iterationStage, iterationIndex, op, ns, energyMeasurements);
             }
             catch (Exception)
             {

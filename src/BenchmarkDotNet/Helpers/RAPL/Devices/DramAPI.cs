@@ -29,17 +29,24 @@ namespace BenchmarkDotNet.Helpers.RAPL.Devices
                     raplDeviceId += 1;
                 }
 
-                throw new Exception("PyRAPLCantInitDeviceAPI"); //TODO: Proper exceptions
+                throw new Exception("CAPLCantFindDramDevice");
             }
 
             List<(string, double)> raplFiles = new List<(string, double)>();
             foreach (var (socketDirectoryName, raplSocketId) in socketDirectoryNames)
             {
-                raplFiles.Add(getDramFile(socketDirectoryName, raplSocketId));
+                try
+                {
+                    var dramFile = getDramFile(socketDirectoryName, raplSocketId);
+                    raplFiles.Add(dramFile);
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine("Couldn't find DRAM RAPL device for socket " + raplSocketId + ": " + e.Message);
+                }
             }
 
             return raplFiles;
         }
     }
-
 }

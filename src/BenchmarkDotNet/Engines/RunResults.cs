@@ -73,8 +73,7 @@ namespace BenchmarkDotNet.Engines
                     ++resultIndex,
                     measurement.Operations,
                     value,
-                    measurement.PackageEnergy,
-                    measurement.DramEnergy);
+                    measurement.EnergyMeasurements);
             }
         }
 

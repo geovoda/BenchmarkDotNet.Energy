@@ -103,8 +103,14 @@ namespace BenchmarkDotNet.Exporters.Csv
             columns.Add(new MeasurementColumn("Measurement_Nanoseconds", (summary, report, m) => m.Nanoseconds.ToString("0.##", summary.GetCultureInfo())));
             columns.Add(new MeasurementColumn("Measurement_Operations", (summary, report, m) => m.Operations.ToString()));
             columns.Add(new MeasurementColumn("Measurement_Value", (summary, report, m) => (m.Nanoseconds / m.Operations).ToString("0.##", summary.GetCultureInfo())));
-            columns.Add(new MeasurementColumn("Measurement_PackageEnergy", (summary, report, m) => m.PackageEnergy.ToString("0.##", summary.GetCultureInfo())));
-            columns.Add(new MeasurementColumn("Measurement_PackageEnergyPerOperation", (summary, report, m) => (m.PackageEnergy / m.Operations).ToString("0.##", summary.GetCultureInfo())));
+
+            // TODO AAU: Export Energy Measurements, each separately
+            columns.Add(new MeasurementColumn("Measurement_PackageEnergy", (summary, report, m) => string.Join("/", m.EnergyMeasurements.Select(em =>  em.PackageEnergy.ToString("0.##", summary.GetCultureInfo())).ToList())));
+            columns.Add(new MeasurementColumn("Measurement_DramEnergy", (summary, report, m) => string.Join("/", m.EnergyMeasurements.Select(em =>  em.DramEnergy.ToString("0.##", summary.GetCultureInfo())).ToList())));
+            columns.Add(new MeasurementColumn("Measurement_UncoreEnergy", (summary, report, m) => string.Join("/", m.EnergyMeasurements.Select(em =>  em.UncoreEnergy.ToString("0.##", summary.GetCultureInfo())).ToList())));
+            columns.Add(new MeasurementColumn("Measurement_CoreEnergy", (summary, report, m) => string.Join("/", m.EnergyMeasurements.Select(em =>  em.CoreEnergy.ToString("0.##", summary.GetCultureInfo())).ToList())));
+            columns.Add(new MeasurementColumn("Measurement_PsysEnergy", (summary, report, m) => string.Join("/", m.EnergyMeasurements.Select(em =>  em.PsysEnergy.ToString("0.##", summary.GetCultureInfo())).ToList())));
+            //columns.Add(new MeasurementColumn("Measurement_PackageEnergyPerOperation", (summary, report, m) => (m.PackageEnergy / m.Operations).ToString("0.##", summary.GetCultureInfo())));
 
             return columns.ToArray();
         }

@@ -9,7 +9,13 @@ namespace BenchmarkDotNet.Helpers.RAPL
     public abstract class DeviceAPI
     {
         private List<int> _socketIds;
-        private List<(string, double)> _sysFiles;
+        protected List<(string filePath, double maxEnergyRange)> _sysFiles;
+        private const string RaplDir = "/sys/class/powercap/intel-rapl/";
+
+        public string GetRaplDir()
+        {
+            return RaplDir;
+        }
 
         private List<int> GetCpus()
         {
@@ -57,7 +63,7 @@ namespace BenchmarkDotNet.Helpers.RAPL
             {
                 foreach (var sid in socketIds)
                 {
-                    if (allSocketIds.Contains(sid))
+                    if (!allSocketIds.Contains(sid))
                         throw new Exception("PyRAPLBadSocketIdException"); //TODO: Proper exceptions
 
                     this._socketIds = socketIds;
@@ -101,12 +107,12 @@ namespace BenchmarkDotNet.Helpers.RAPL
             resultList.OrderBy(t => t.packageId);
             return resultList.Select(t => (t.dirName, t.raplId)).ToList();
         }
-
+        // Collect all results for every socket.
         virtual public List<double> Collect()
         {
             var result = Enumerable.Range(0, this._socketIds.Count).Select(i => -1.0).ToList();
             for (int i = 0; i < _sysFiles.Count; i++){
-                var deviceFile = this._sysFiles[i].Item1;
+                var deviceFile = this._sysFiles[i].filePath;
                 //TODO: Test om der er mærkbar forskel ved at holde filen åben og læse linjen på ny
                 if (double.TryParse(File.ReadAllText(deviceFile), out double energyVal))
                     result[this._socketIds[i]] = energyVal;
@@ -114,6 +120,8 @@ namespace BenchmarkDotNet.Helpers.RAPL
             return result;
         }
 
-        virtual public double GetMaxEnergyValue(int i) => _sysFiles[i].Item2;
+        virtual public double GetMaxEnergyValue(int i) => _sysFiles[i].maxEnergyRange;
+
+        public long GetNumSockets() => this._socketIds.Count;
     }
 }
