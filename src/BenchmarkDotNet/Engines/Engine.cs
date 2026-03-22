@@ -88,7 +88,7 @@ namespace BenchmarkDotNet.Engines
             if (enableRapl)
             {
 
-                // Rapl.AddDRAMSensor();
+                Rapl.AddDRAMSensor();
                 Rapl.AddPackageSensor();
             }
 
