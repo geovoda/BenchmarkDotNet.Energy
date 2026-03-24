@@ -104,7 +104,7 @@ namespace BenchmarkDotNet.Diagnosers
                 double uncorePerIter = samples.Any() ? samples.Average(m => m.EnergyMeasurements[i].UncoreEnergy) : double.NaN;
                 double corePerIter = samples.Any() ? samples.Average(m => m.EnergyMeasurements[i].CoreEnergy) : double.NaN;
                 double psysPerIter = samples.Any() ? samples.Average(m => m.EnergyMeasurements[i].PsysEnergy) : double.NaN;
-                double avgTempPerIter = samples.Any() ? samples.Average(m => m.EnergyMeasurements[i].AverageCpuTemperature) : double.NaN;
+                double avgTempPerIter = samples.Any() ? samples.Average(m => m.EnergyMeasurements[i].AverageCpuTemperature) / 1000.0 : double.NaN;
 
                 yield return new Metric(EnergyMetricDescriptor.DramEnergyPerOp(i), dramPerOp);
                 yield return new Metric(EnergyMetricDescriptor.PackageEnergyPerOp(i), pkgPerOp);
