@@ -70,6 +70,7 @@ namespace BenchmarkDotNet.Columns
         public const string CoreEnergyPerIter = "Core E{0} (uJ/iter)";
         public const string PsysEnergyPerOp = "Psys E (uJ/op)";
         public const string PsysEnergyPerIter = "Psys E (uJ/iter)";
+        public const string AverageTemperaturePerIter = "Avg Temp{0} (degC)";
 
         //Characteristics:
         public const string Id = "Id";

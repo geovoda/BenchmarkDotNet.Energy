@@ -104,6 +104,7 @@ namespace BenchmarkDotNet.Diagnosers
                 double uncorePerIter = samples.Any() ? samples.Average(m => m.EnergyMeasurements[i].UncoreEnergy) : double.NaN;
                 double corePerIter = samples.Any() ? samples.Average(m => m.EnergyMeasurements[i].CoreEnergy) : double.NaN;
                 double psysPerIter = samples.Any() ? samples.Average(m => m.EnergyMeasurements[i].PsysEnergy) : double.NaN;
+                double avgTempPerIter = samples.Any() ? samples.Average(m => m.EnergyMeasurements[i].AverageCpuTemperature) : double.NaN;
 
                 yield return new Metric(EnergyMetricDescriptor.DramEnergyPerOp(i), dramPerOp);
                 yield return new Metric(EnergyMetricDescriptor.PackageEnergyPerOp(i), pkgPerOp);
@@ -123,6 +124,7 @@ namespace BenchmarkDotNet.Diagnosers
 
                 yield return new Metric(EnergyMetricDescriptor.PackageEnergyPerOpStdDev(i), pkgPerOpStdDev);
                 yield return new Metric(EnergyMetricDescriptor.PackageEnergyPerOpCvPct(i), pkgPerOpCvPct);
+                yield return new Metric(EnergyMetricDescriptor.AverageTemperaturePerIteration(i), avgTempPerIter);
             }
         }
         private static double StdDevSample(double[] values, double mean)
@@ -215,6 +217,12 @@ namespace BenchmarkDotNet.Diagnosers
                     "AvgEnergyPsysPerIter",
                     Column.PsysEnergyPerIter,
                     "Average psys energy consumed per benchmark iteration (uJ).");
+
+            internal static IMetricDescriptor AverageTemperaturePerIteration(int socketId) =>
+                new EnergyMetricDescriptor(
+                    $"AvgTemperaturePerIter{socketId}",
+                    string.Format(Column.AverageTemperaturePerIter, socketId),
+                    $"Average CPU temperature per benchmark iteration (Celsius degrees) on socket {socketId}.");
 
             private EnergyMetricDescriptor(string id, string columnName, string legend,
                 string numberFormat = "#0.00 uj", string unit = "uJ")
