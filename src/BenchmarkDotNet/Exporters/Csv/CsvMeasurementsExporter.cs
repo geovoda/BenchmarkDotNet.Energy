@@ -106,10 +106,22 @@ namespace BenchmarkDotNet.Exporters.Csv
 
             // TODO AAU: Export Energy Measurements, each separately
             columns.Add(new MeasurementColumn("Measurement_PackageEnergy", (summary, report, m) => string.Join("/", m.EnergyMeasurements.Select(em =>  em.PackageEnergy.ToString("0.##", summary.GetCultureInfo())).ToList())));
+            columns.Add(new MeasurementColumn("Measurement_PackageEnergyPerOperation", (summary, report, m) => string.Join("/", m.EnergyMeasurements.Select(em =>  (em.PackageEnergy / m.Operations).ToString("0.##", summary.GetCultureInfo())).ToList())));
+
             columns.Add(new MeasurementColumn("Measurement_DramEnergy", (summary, report, m) => string.Join("/", m.EnergyMeasurements.Select(em =>  em.DramEnergy.ToString("0.##", summary.GetCultureInfo())).ToList())));
+            columns.Add(new MeasurementColumn("Measurement_DramEnergyPerOperation", (summary, report, m) => string.Join("/", m.EnergyMeasurements.Select(em =>  (em.DramEnergy / m.Operations).ToString("0.##", summary.GetCultureInfo())).ToList())));
+
             columns.Add(new MeasurementColumn("Measurement_UncoreEnergy", (summary, report, m) => string.Join("/", m.EnergyMeasurements.Select(em =>  em.UncoreEnergy.ToString("0.##", summary.GetCultureInfo())).ToList())));
+            columns.Add(new MeasurementColumn("Measurement_UncoreEnergyPerOperation", (summary, report, m) => string.Join("/", m.EnergyMeasurements.Select(em =>  (em.UncoreEnergy / m.Operations).ToString("0.##", summary.GetCultureInfo())).ToList())));
+
             columns.Add(new MeasurementColumn("Measurement_CoreEnergy", (summary, report, m) => string.Join("/", m.EnergyMeasurements.Select(em =>  em.CoreEnergy.ToString("0.##", summary.GetCultureInfo())).ToList())));
+            columns.Add(new MeasurementColumn("Measurement_CoreEnergyPerOperation", (summary, report, m) => string.Join("/", m.EnergyMeasurements.Select(em =>  (em.CoreEnergy / m.Operations).ToString("0.##", summary.GetCultureInfo())).ToList())));
+
             columns.Add(new MeasurementColumn("Measurement_PsysEnergy", (summary, report, m) => string.Join("/", m.EnergyMeasurements.Select(em =>  em.PsysEnergy.ToString("0.##", summary.GetCultureInfo())).ToList())));
+            columns.Add(new MeasurementColumn("Measurement_PsysEnergyPerOperation", (summary, report, m) => string.Join("/", m.EnergyMeasurements.Select(em =>  (em.PsysEnergy / m.Operations).ToString("0.##", summary.GetCultureInfo())).ToList())));
+
+            columns.Add(new MeasurementColumn("Measurement_Temperature", (summary, report, m) => string.Join("/", m.EnergyMeasurements.Select(em =>  em.AverageCpuTemperature.ToString("0.##", summary.GetCultureInfo())).ToList())));
+
             //columns.Add(new MeasurementColumn("Measurement_PackageEnergyPerOperation", (summary, report, m) => (m.PackageEnergy / m.Operations).ToString("0.##", summary.GetCultureInfo())));
 
             return columns.ToArray();
