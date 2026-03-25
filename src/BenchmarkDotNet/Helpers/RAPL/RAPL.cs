@@ -77,6 +77,9 @@ namespace BenchmarkDotNet.Helpers.RAPL {
                 if (sensors.TryGetValue(SensorType.TemperatureSensor, out var temperatureSensor))
                     averageCpuTemperature = temperatureSensor.GetValueForSocket(socketId);
 
+                if (!double.IsNaN(averageCpuTemperature))
+                    averageCpuTemperature /= 1000; // Convert from millidegree Celsius to degree Celsius
+
                 result.Add(new EnergyMeasurement(socketId, packageEnergy, dramEnergy, coreEnergy, uncoreEnergy, psysEnergy, averageCpuTemperature));
             }
 

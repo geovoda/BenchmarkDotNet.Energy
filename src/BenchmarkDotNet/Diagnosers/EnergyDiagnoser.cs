@@ -104,7 +104,7 @@ namespace BenchmarkDotNet.Diagnosers
                 double uncorePerIter = samples.Any() ? samples.Average(m => m.EnergyMeasurements[i].UncoreEnergy) : double.NaN;
                 double corePerIter = samples.Any() ? samples.Average(m => m.EnergyMeasurements[i].CoreEnergy) : double.NaN;
                 double psysPerIter = samples.Any() ? samples.Average(m => m.EnergyMeasurements[i].PsysEnergy) : double.NaN;
-                double avgTempPerIter = samples.Any() ? samples.Average(m => m.EnergyMeasurements[i].AverageCpuTemperature) / 1000.0 : double.NaN;
+                double avgTempPerIter = samples.Any() ? samples.Average(m => m.EnergyMeasurements[i].AverageCpuTemperature) : double.NaN;
 
                 yield return new Metric(EnergyMetricDescriptor.DramEnergyPerOp(i), dramPerOp);
                 yield return new Metric(EnergyMetricDescriptor.PackageEnergyPerOp(i), pkgPerOp);
@@ -222,7 +222,9 @@ namespace BenchmarkDotNet.Diagnosers
                 new EnergyMetricDescriptor(
                     $"AvgTemperaturePerIter{socketId}",
                     string.Format(Column.AverageTemperaturePerIter, socketId),
-                    $"Average CPU temperature per benchmark iteration (Celsius degrees) on socket {socketId}.");
+                    $"Average CPU temperature per benchmark iteration (Celsius degrees) on socket {socketId}.",
+                    numberFormat: "#0.00",
+                    unit: "degC");
 
             private EnergyMetricDescriptor(string id, string columnName, string legend,
                 string numberFormat = "#0.00 uj", string unit = "uJ")
