@@ -17,7 +17,10 @@ namespace BenchmarkDotNet.Diagnosers
     {
         private const string DiagnoserId = nameof(EnergyDiagnoser);
 
-        public static readonly EnergyDiagnoser Default = new EnergyDiagnoser(new EnergyDiagnoserConfig(displayEnergyColumn: true));
+        public static readonly EnergyDiagnoser Default = new EnergyDiagnoser(new EnergyDiagnoserConfig());
+        public static readonly EnergyDiagnoser PackageOnly = new EnergyDiagnoser(new EnergyDiagnoserConfig(displayPackageColumn: true, displayDramColumn: false, displayUncoreColumn: false, displayCoreColumn: false, displayPsysColumn: false, displayCpuTemperatureColumn: false));
+        public static readonly EnergyDiagnoser PackageAndDram = new EnergyDiagnoser(new EnergyDiagnoserConfig(displayPackageColumn: true, displayDramColumn: true, displayUncoreColumn: false, displayCoreColumn: false, displayPsysColumn: false, displayCpuTemperatureColumn: false));
+        public static readonly EnergyDiagnoser PackageAndDramAndUncore = new EnergyDiagnoser(new EnergyDiagnoserConfig(displayPackageColumn: true, displayDramColumn: true, displayUncoreColumn: true, displayCoreColumn: false, displayPsysColumn: false, displayCpuTemperatureColumn: false));
 
         public EnergyDiagnoser(EnergyDiagnoserConfig config) => Config = config;
 
@@ -38,10 +41,7 @@ namespace BenchmarkDotNet.Diagnosers
             }
         }
 
-        public void Handle(HostSignal signal, DiagnoserActionParameters parameters)
-        {
-            System.Console.WriteLine(DiagnoserId + " Signal " + signal.ToString());
-        }
+        public void Handle(HostSignal signal, DiagnoserActionParameters parameters) { }
 
         public IEnumerable<Metric> ProcessResults(DiagnoserResults diagnoserResults)
         {
@@ -57,74 +57,92 @@ namespace BenchmarkDotNet.Diagnosers
 
             for (int i = 0; i < socketCount; ++i)
             {
-                // Per-iteration uJ/op samples
-                var pkgPerOpSeries = samples
-                    .Where(m => (m.Operations > 0 && m.EnergyMeasurements.Count > i))
-                    .Select(m => m.EnergyMeasurements[i].PackageEnergy / m.Operations)
-                    .ToArray();
-
-                var dramPerOpSeries = samples
-                    .Where(m => (m.Operations > 0 && m.EnergyMeasurements.Count > i))
-                    .Select(m => m.EnergyMeasurements[i].DramEnergy / m.Operations)
-                    .ToArray();
-
-                var uncorePerOpSeries = samples
-                    .Where(m => (m.Operations > 0 && m.EnergyMeasurements.Count > i))
-                    .Select(m => m.EnergyMeasurements[i].UncoreEnergy / m.Operations)
-                    .ToArray();
-
-                var corePerOpSeries = samples
-                    .Where(m => (m.Operations > 0 && m.EnergyMeasurements.Count > i))
-                    .Select(m => m.EnergyMeasurements[i].CoreEnergy / m.Operations)
-                    .ToArray();
-
-                var psysPerOpSeries = samples
-                    .Where(m => (m.Operations > 0 && m.EnergyMeasurements.Count > i))
-                    .Select(m => m.EnergyMeasurements[i].PsysEnergy / m.Operations)
-                    .ToArray();
-
-                //var dramPerOpSeries = samples.Where(m => m.Operations > 0).Select(m => m.DramEnergy / m.Operations).ToArray();
-
-                // Mean across iterations
-                double pkgPerOp = pkgPerOpSeries.Length > 0 ? pkgPerOpSeries.Average() : double.NaN;
-                double dramPerOp = dramPerOpSeries.Length > 0 ? dramPerOpSeries.Average() : double.NaN;
-                double uncorePerOp = uncorePerOpSeries.Length > 0 ? uncorePerOpSeries.Average() : double.NaN;
-                double corePerOp = corePerOpSeries.Length > 0 ? corePerOpSeries.Average() : double.NaN;
-                double psysPerOp = psysPerOpSeries.Length > 0 ? psysPerOpSeries.Average() : double.NaN;
-
-                // Variability (sample SD + CV%)
-                double pkgPerOpStdDev = StdDevSample(pkgPerOpSeries, pkgPerOp);
-                double pkgPerOpCvPct = (pkgPerOp > 0 && !double.IsNaN(pkgPerOpStdDev))
-                    ? (pkgPerOpStdDev / pkgPerOp) * 100.0
-                    : double.NaN;
-
-                // uJ/iteration (mean iteration energy)
-                double pkgPerIter = samples.Any() ? samples.Average(m => m.EnergyMeasurements[i].PackageEnergy) : double.NaN;
-                double dramPerIter = samples.Any() ? samples.Average(m => m.EnergyMeasurements[i].DramEnergy) : double.NaN;
-                double uncorePerIter = samples.Any() ? samples.Average(m => m.EnergyMeasurements[i].UncoreEnergy) : double.NaN;
-                double corePerIter = samples.Any() ? samples.Average(m => m.EnergyMeasurements[i].CoreEnergy) : double.NaN;
-                double psysPerIter = samples.Any() ? samples.Average(m => m.EnergyMeasurements[i].PsysEnergy) : double.NaN;
-                double avgTempPerIter = samples.Any() ? samples.Average(m => m.EnergyMeasurements[i].AverageCpuTemperature) : double.NaN;
-
-                yield return new Metric(EnergyMetricDescriptor.DramEnergyPerOp(i), dramPerOp);
-                yield return new Metric(EnergyMetricDescriptor.PackageEnergyPerOp(i), pkgPerOp);
-                yield return new Metric(EnergyMetricDescriptor.UncoreEnergyPerOp(i), uncorePerOp);
-                yield return new Metric(EnergyMetricDescriptor.CoreEnergyPerOp(i), corePerOp);
-
-                yield return new Metric(EnergyMetricDescriptor.DramEnergyPerIteration(i), dramPerIter);
-                yield return new Metric(EnergyMetricDescriptor.PackageEnergyPerIteration(i), pkgPerIter);
-                yield return new Metric(EnergyMetricDescriptor.UncoreEnergyPerIteration(i), uncorePerIter);
-                yield return new Metric(EnergyMetricDescriptor.CoreEnergyPerIteration(i), corePerIter);
-
-                if (!double.IsNaN(psysPerOp) && !double.IsNaN(psysPerIter))
+                if (Config.DisplayPackageColumn)
                 {
-                    yield return new Metric(EnergyMetricDescriptor.PsysEnergyPerOp, psysPerOp);
-                    yield return new Metric(EnergyMetricDescriptor.PsysEnergyPerIteration, psysPerIter);
+                    var pkgPerOpSeries = samples
+                        .Where(m => (m.Operations > 0 && m.EnergyMeasurements.Count > i))
+                        .Select(m => m.EnergyMeasurements[i].PackageEnergy / m.Operations)
+                        .ToArray();
+
+                    double pkgPerOp = pkgPerOpSeries.Length > 0 ? pkgPerOpSeries.Average() : double.NaN;
+                    double pkgPerIter = samples.Any() ? samples.Average(m => m.EnergyMeasurements[i].PackageEnergy) : double.NaN;
+
+                    double pkgPerOpStdDev = StdDevSample(pkgPerOpSeries, pkgPerOp);
+                    double pkgPerOpCvPct = (pkgPerOp > 0 && !double.IsNaN(pkgPerOpStdDev))
+                        ? (pkgPerOpStdDev / pkgPerOp) * 100.0
+                        : double.NaN;
+
+                    yield return new Metric(EnergyMetricDescriptor.PackageEnergyPerOp(i), pkgPerOp);
+                    yield return new Metric(EnergyMetricDescriptor.PackageEnergyPerOpStdDev(i), pkgPerOpStdDev);
+                    yield return new Metric(EnergyMetricDescriptor.PackageEnergyPerOpCvPct(i), pkgPerOpCvPct);
+                    yield return new Metric(EnergyMetricDescriptor.PackageEnergyPerIteration(i), pkgPerIter);
                 }
 
-                yield return new Metric(EnergyMetricDescriptor.PackageEnergyPerOpStdDev(i), pkgPerOpStdDev);
-                yield return new Metric(EnergyMetricDescriptor.PackageEnergyPerOpCvPct(i), pkgPerOpCvPct);
-                yield return new Metric(EnergyMetricDescriptor.AverageTemperaturePerIteration(i), avgTempPerIter);
+                if (Config.DisplayDramColumn)
+                {
+                    var dramPerOpSeries = samples
+                        .Where(m => (m.Operations > 0 && m.EnergyMeasurements.Count > i))
+                        .Select(m => m.EnergyMeasurements[i].DramEnergy / m.Operations)
+                        .ToArray();
+
+                    double dramPerOp = dramPerOpSeries.Length > 0 ? dramPerOpSeries.Average() : double.NaN;
+                    double dramPerIter = samples.Any() ? samples.Average(m => m.EnergyMeasurements[i].DramEnergy) : double.NaN;
+
+                    yield return new Metric(EnergyMetricDescriptor.DramEnergyPerOp(i), dramPerOp);
+                    yield return new Metric(EnergyMetricDescriptor.DramEnergyPerIteration(i), dramPerIter);
+                }
+
+                if (Config.DisplayUncoreColumn)
+                {
+                    var uncorePerOpSeries = samples
+                        .Where(m => (m.Operations > 0 && m.EnergyMeasurements.Count > i))
+                        .Select(m => m.EnergyMeasurements[i].UncoreEnergy / m.Operations)
+                        .ToArray();
+
+                    double uncorePerOp = uncorePerOpSeries.Length > 0 ? uncorePerOpSeries.Average() : double.NaN;
+                    double uncorePerIter = samples.Any() ? samples.Average(m => m.EnergyMeasurements[i].UncoreEnergy) : double.NaN;
+
+                    yield return new Metric(EnergyMetricDescriptor.UncoreEnergyPerOp(i), uncorePerOp);
+                    yield return new Metric(EnergyMetricDescriptor.UncoreEnergyPerIteration(i), uncorePerIter);
+                }
+
+                if (Config.DisplayCoreColumn)
+                {
+                    var corePerOpSeries = samples
+                        .Where(m => (m.Operations > 0 && m.EnergyMeasurements.Count > i))
+                        .Select(m => m.EnergyMeasurements[i].CoreEnergy / m.Operations)
+                        .ToArray();
+
+                    double corePerOp = corePerOpSeries.Length > 0 ? corePerOpSeries.Average() : double.NaN;
+                    double corePerIter = samples.Any() ? samples.Average(m => m.EnergyMeasurements[i].CoreEnergy) : double.NaN;
+
+                    yield return new Metric(EnergyMetricDescriptor.CoreEnergyPerOp(i), corePerOp);
+                    yield return new Metric(EnergyMetricDescriptor.CoreEnergyPerIteration(i), corePerIter);
+                }
+
+                if (Config.DisplayPsysColumn)
+                {
+                    var psysPerOpSeries = samples
+                        .Where(m => (m.Operations > 0 && m.EnergyMeasurements.Count > i))
+                        .Select(m => m.EnergyMeasurements[i].PsysEnergy / m.Operations)
+                        .ToArray();
+
+                    double psysPerOp = psysPerOpSeries.Length > 0 ? psysPerOpSeries.Average() : double.NaN;
+                    double psysPerIter = samples.Any() ? samples.Average(m => m.EnergyMeasurements[i].PsysEnergy) : double.NaN;
+
+                    if (!double.IsNaN(psysPerOp) && !double.IsNaN(psysPerIter))
+                    {
+                        yield return new Metric(EnergyMetricDescriptor.PsysEnergyPerOp, psysPerOp);
+                        yield return new Metric(EnergyMetricDescriptor.PsysEnergyPerIteration, psysPerIter);
+                    }
+                }
+
+                if (Config.DisplayCpuTemperatureColumn)
+                {
+                    double avgTempPerIter = samples.Any() ? samples.Average(m => m.EnergyMeasurements[i].AverageCpuTemperature) : double.NaN;
+                    yield return new Metric(EnergyMetricDescriptor.AverageTemperaturePerIteration(i), avgTempPerIter);
+                }
+
             }
         }
         private static double StdDevSample(double[] values, double mean)
