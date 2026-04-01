@@ -18,7 +18,10 @@ namespace BenchmarkDotNet.Helpers
 
         internal static string GetTraceFilePath(DiagnoserActionParameters details, DateTime creationTime, string fileExtension)
         {
-            return GetFilePath(details, null, creationTime, fileExtension, "userheap.etl".Length - fileExtension.Length);
+            int reserve = fileExtension != null
+                ? "userheap.etl".Length - fileExtension.Length
+                : 0;
+            return GetFilePath(details, null, creationTime, fileExtension, reserve);
         }
 
         internal static string GetFilePath(DiagnoserActionParameters details, string? subfolder, DateTime? creationTime, string fileExtension, int reserve)
