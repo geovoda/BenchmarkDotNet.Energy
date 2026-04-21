@@ -104,7 +104,6 @@ namespace BenchmarkDotNet.Exporters.Csv
             columns.Add(new MeasurementColumn("Measurement_Operations", (summary, report, m) => m.Operations.ToString()));
             columns.Add(new MeasurementColumn("Measurement_Value", (summary, report, m) => (m.Nanoseconds / m.Operations).ToString("0.##", summary.GetCultureInfo())));
 
-            // TODO AAU: Export Energy Measurements, each separately
             columns.Add(new MeasurementColumn("Measurement_PackageEnergy", (summary, report, m) => string.Join("/", m.EnergyMeasurements.Select(em =>  em.PackageEnergy.ToString("0.##", summary.GetCultureInfo())).ToList())));
             columns.Add(new MeasurementColumn("Measurement_PackageEnergyPerOperation", (summary, report, m) => string.Join("/", m.EnergyMeasurements.Select(em =>  (em.PackageEnergy / m.Operations).ToString("0.##", summary.GetCultureInfo())).ToList())));
 
