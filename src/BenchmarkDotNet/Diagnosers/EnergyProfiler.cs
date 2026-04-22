@@ -161,10 +161,10 @@ namespace BenchmarkDotNet.Diagnosers
                     timestamp.ProcessId = parameters.Process?.Id ?? 0;
                     break;
                 case HostSignal.BeforeActualRun:
-                    timestamp.StartTimestamp = Chronometer.GetTimestamp();
+                    timestamp.StartTimestamp = Chronometer.GetTimestamp() / 1_000_000;
                     break;
                 case HostSignal.AfterActualRun:
-                    timestamp.EndTimestamp = Chronometer.GetTimestamp();
+                    timestamp.EndTimestamp = Chronometer.GetTimestamp() / 1_000_000;
                     break;
             }
 
