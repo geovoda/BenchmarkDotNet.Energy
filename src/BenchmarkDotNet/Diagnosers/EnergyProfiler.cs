@@ -33,7 +33,7 @@ namespace BenchmarkDotNet.Diagnosers
     {
         public static readonly IDiagnoser Default = new EnergyProfiler(new EnergyProfilerConfig("/home/test/tools/metrion-internal/.venv/bin/metrion", "/home/test/tools/metrion-internal"));
         private readonly EnergyProfilerConfig config;
-        private readonly Dictionary<BenchmarkId, EnergyTimestamp> energyTimestamps = new Dictionary<BenchmarkId, EnergyTimestamp>();
+        private readonly Dictionary<int, EnergyTimestamp> energyTimestamps = new Dictionary<int, EnergyTimestamp>();
         private Process metrionProcess;
 
         [PublicAPI]
@@ -150,7 +150,7 @@ namespace BenchmarkDotNet.Diagnosers
 
         public void Handle(HostSignal signal, DiagnoserActionParameters parameters)
         {
-            energyTimestamps.TryGetValue(parameters.BenchmarkId, out var timestamp);
+            energyTimestamps.TryGetValue(parameters.BenchmarkId.GetHashCode(), out var timestamp);
 
             if (timestamp == null)
                 timestamp = new EnergyTimestamp();
@@ -168,8 +168,8 @@ namespace BenchmarkDotNet.Diagnosers
                     break;
             }
 
-            energyTimestamps.Remove(parameters.BenchmarkId);
-            energyTimestamps.Add(parameters.BenchmarkId, timestamp);
+            energyTimestamps.Remove(parameters.BenchmarkId.GetHashCode());
+            energyTimestamps.Add(parameters.BenchmarkId.GetHashCode(), timestamp);
         }
 
         public IEnumerable<ValidationError> Validate(ValidationParameters validationParameters)
