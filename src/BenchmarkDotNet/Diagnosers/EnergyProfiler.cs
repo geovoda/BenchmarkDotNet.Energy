@@ -82,14 +82,14 @@ namespace BenchmarkDotNet.Diagnosers
                     WorkingDirectory = config.MetrionDatabaseDirectory.FullName,
                 };
 
-                metrionProcess = Process.Start(start);
+                var analyzeProcess = Process.Start(start);
 
-                if (!metrionProcess.WaitForExit(1000 * 10))
+                if (!analyzeProcess.WaitForExit(1000 * 10))
                 {
-                    metrionProcess.KillTree();
+                    analyzeProcess.KillTree();
                 }
 
-                metrionProcess.Dispose();
+                analyzeProcess.Dispose();
 
                 energyTimestamps[key].EnergyJ = ExtractLatestMetrionEnergyMeasurement(timestamp.ProcessId);
             }
