@@ -5,7 +5,11 @@ namespace BenchmarkDotNet.Diagnosers
 {
     public class EnergyProfilerConfig
     {
-        /// <param name="timeoutInSeconds">How long should we wait for the perfcollect script to finish processing the trace. 300s by default.</param>
+        /// <param name="metrionBinaryPath">The path where Metrion binary is located.</param>
+        /// <param name="metrionDatabaseDirectory">The path where Metrion exports the measurements' database.</param>
+        /// <param name="metrionDatabaseNamePattern">The pattern of the Metrion database file name.</param>
+        /// <param name="performExtraBenchmarksRun">When set to true, benchmarks will be executed one more time with the profiler attached. If set to false, there will be no extra run but the results will contain overhead. False by default.</param>
+        /// <param name="timeoutInSeconds">How long should we wait for the Metrion script to finish exporting the measurements. 300s by default.</param>
         public EnergyProfilerConfig(string metrionBinaryPath, string metrionDatabaseDirectory, string metrionDatabaseNamePattern="monitor_*.db", bool performExtraBenchmarksRun = false, int timeoutInSeconds = 300)
         {
             MetrionBinaryPath = new FileInfo(metrionBinaryPath);
