@@ -109,15 +109,16 @@ namespace BenchmarkDotNet.Diagnosers
                 File.Move(latestMetrionDbFile.FullName, traceFilePath.FullName);
             }
 
-            energyIntervals[parameters.BenchmarkCase].EnergyJ = ExtractLatestMetrionEnergyMeasurement(energyInterval.ProcessId);
+            energyIntervals[parameters.BenchmarkCase].EnergyJ = ExtractLatestMetrionEnergyMeasurement(logger, energyInterval.ProcessId);
         }
 
-        private double ExtractLatestMetrionEnergyMeasurement(int processId)
+        private double ExtractLatestMetrionEnergyMeasurement(ILogger logger, int processId)
         {
             DirectoryInfo measurementsDirectory = new DirectoryInfo(Path.Combine(config.MetrionDatabaseDirectory.FullName, "metrion/energy_attribution/output/"));
 
             if (!measurementsDirectory.Exists)
             {
+                logger.WriteLineError($"Unable to find measurements directory: {measurementsDirectory.FullName}");
                 return 0;
             }
 
@@ -128,12 +129,14 @@ namespace BenchmarkDotNet.Diagnosers
 
             if (latestMetrionOutputFile == null)
             {
+                logger.WriteLineError($"The measurements files were not found in the directory {measurementsDirectory.FullName}");
                 return 0;
             }
 
             var jsonFile = File.ReadAllText(latestMetrionOutputFile.FullName);
             if (!jsonFile.Contains($"[{processId}]"))
             {
+                logger.WriteLineError($"The latest measurement file contains a different processId.");
                 return 0;
             }
 
