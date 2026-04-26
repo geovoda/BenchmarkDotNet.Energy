@@ -125,6 +125,7 @@ namespace BenchmarkDotNet.Diagnosers
             var latestMetrionOutputFile = Directory
                 .GetFiles(measurementsDirectory.FullName, "*.json")
                 .Select(path => new FileInfo(path))
+                .OrderByDescending(f => f.LastWriteTime)
                 .FirstOrDefault();
 
             if (latestMetrionOutputFile == null)
@@ -136,7 +137,7 @@ namespace BenchmarkDotNet.Diagnosers
             var jsonFile = File.ReadAllText(latestMetrionOutputFile.FullName);
             if (!jsonFile.Contains($"[{processId}]"))
             {
-                logger.WriteLineError($"The latest measurement file contains a different processId.");
+                logger.WriteLineError($"The latest measurement file ({latestMetrionOutputFile.Name}) contains a different processId. Expected: {processId}.");
                 return 0;
             }
 
