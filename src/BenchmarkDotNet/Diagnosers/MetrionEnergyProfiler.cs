@@ -103,13 +103,13 @@ namespace BenchmarkDotNet.Diagnosers
 
             analyzeProcess.Dispose();
 
+            energyIntervals[parameters.BenchmarkCase].EnergyJ = ExtractLatestMetrionEnergyMeasurement(logger, energyInterval.ProcessId);
+
             if (config.KeepMetrionDatabaseFiles)
             {
                 var traceFilePath = new FileInfo(ArtifactFileNameHelper.GetTraceFilePath(parameters, latestMetrionDbFile.CreationTime, $"pid{energyInterval.ProcessId}.db"));
                 File.Move(latestMetrionDbFile.FullName, traceFilePath.FullName);
             }
-
-            energyIntervals[parameters.BenchmarkCase].EnergyJ = ExtractLatestMetrionEnergyMeasurement(logger, energyInterval.ProcessId);
         }
 
         private double ExtractLatestMetrionEnergyMeasurement(ILogger logger, int processId)
