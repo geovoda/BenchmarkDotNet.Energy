@@ -33,8 +33,7 @@ namespace BenchmarkDotNet.Diagnosers
     {
         public static readonly IDiagnoser Default = new MetrionEnergyProfiler(new MetrionEnergyProfilerConfig("/home/test/tools/metrion-internal/.venv/bin/metrion", "/home/test/tools/metrion-internal", keepMetrionDatabaseFiles: true));
         private readonly MetrionEnergyProfilerConfig config;
-        private readonly Dictionary<int, EnergyInterval> energyIntervals = new();
-        private int currentBenchmarkId;
+        private readonly Dictionary<BenchmarkCase, EnergyInterval> energyIntervals = new();
         private Process? metrionProcess;
 
         [PublicAPI]
@@ -60,12 +59,18 @@ namespace BenchmarkDotNet.Diagnosers
                 .FirstOrDefault();
 
             if (latestMetrionDbFile == null)
+            {
+                logger.WriteLineError($"Metrion latest database file not found: {config.MetrionDatabaseDirectory.FullName}");
                 return;
+            }
 
             string dbPathArg = $"--db-path {latestMetrionDbFile.FullName}";
 
-            if (!energyIntervals.TryGetValue(currentBenchmarkId, out var energyInterval))
+            if (!energyIntervals.TryGetValue(parameters.BenchmarkCase, out var energyInterval))
+            {
+                logger.WriteLineError($"Metrion benchmark information not found.");
                 return;
+            }
 
             string pidsArg = $"--filter-pids {energyInterval.ProcessId}";
 
@@ -103,7 +108,7 @@ namespace BenchmarkDotNet.Diagnosers
                 File.Move(latestMetrionDbFile.FullName, traceFilePath.FullName);
             }
 
-            energyIntervals[currentBenchmarkId].EnergyJ = ExtractLatestMetrionEnergyMeasurement(energyInterval.ProcessId);
+            energyIntervals[parameters.BenchmarkCase].EnergyJ = ExtractLatestMetrionEnergyMeasurement(energyInterval.ProcessId);
         }
 
         private double ExtractLatestMetrionEnergyMeasurement(int processId)
@@ -144,7 +149,7 @@ namespace BenchmarkDotNet.Diagnosers
 
         public IEnumerable<Metric> ProcessResults(DiagnoserResults results)
         {
-            if (!energyIntervals.TryGetValue(currentBenchmarkId, out var energyInterval))
+            if (!energyIntervals.TryGetValue(results.BenchmarkCase, out var energyInterval))
             {
                 yield return new Metric(EnergyMetricDescriptor.AverageMetrionCpuEnergyPerOperation, double.NaN);
                 yield return new Metric(EnergyMetricDescriptor.AverageMetrionCpuEnergyPerIteration, double.NaN);
@@ -172,18 +177,17 @@ namespace BenchmarkDotNet.Diagnosers
 
         public void DisplayResults(ILogger logger)
         {
-            if (!energyIntervals.TryGetValue(currentBenchmarkId, out var energyInterval))
+            if (!energyIntervals.Any())
             {
                 return;
             }
 
-            logger.WriteLineInfo($"Total energy measured with Metrion: {energyInterval.EnergyJ} J");
+            logger.WriteLineInfo($"Metrion measured the energy for a total of {energyIntervals.Count} benchmarks.");
         }
 
         public void Handle(HostSignal signal, DiagnoserActionParameters parameters)
         {
-            currentBenchmarkId = parameters.BenchmarkId.GetHashCode();
-            energyIntervals.TryGetValue(currentBenchmarkId, out var energyInterval);
+            energyIntervals.TryGetValue(parameters.BenchmarkCase, out var energyInterval);
 
             if (energyInterval == null)
                 energyInterval = new EnergyInterval();
@@ -208,8 +212,8 @@ namespace BenchmarkDotNet.Diagnosers
                     break;
             }
 
-            energyIntervals.Remove(currentBenchmarkId);
-            energyIntervals.Add(currentBenchmarkId, energyInterval);
+            energyIntervals.Remove(parameters.BenchmarkCase);
+            energyIntervals.Add(parameters.BenchmarkCase, energyInterval);
         }
 
         public IEnumerable<ValidationError> Validate(ValidationParameters validationParameters)
