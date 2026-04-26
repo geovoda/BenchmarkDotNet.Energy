@@ -25,8 +25,8 @@ namespace BenchmarkDotNet.Diagnosers
     public class EnergyInterval
     {
         public int ProcessId { get; set; }
-        public long StartTimestamp { get; set; }
-        public long EndTimestamp { get; set; }
+        public DateTime StartTimestamp { get; set; }
+        public DateTime EndTimestamp { get; set; }
         public double EnergyJ    { get; set; }
     }
     public class MetrionEnergyProfiler : IProfiler
@@ -51,6 +51,7 @@ namespace BenchmarkDotNet.Diagnosers
         private void AnalyzeMetrionDatabase(DiagnoserActionParameters parameters)
         {
             var logger = parameters.Config.GetCompositeLogger();
+            logger.WriteLineInfo($"Analyzing latest Metrion database file.");
 
             var latestMetrionDbFile = Directory
                 .GetFiles(config.MetrionDatabaseDirectory.FullName, config.MetrionDatabaseNamePattern)
@@ -74,8 +75,8 @@ namespace BenchmarkDotNet.Diagnosers
 
             string pidsArg = $"--filter-pids {energyInterval.ProcessId}";
 
-            string startTime = DateTimeOffset.FromUnixTimeMilliseconds(energyInterval.StartTimestamp).ToString("yyyy-MM-dd HH:mm:ss");
-            string endTime = DateTimeOffset.FromUnixTimeMilliseconds(energyInterval.EndTimestamp).ToString("yyyy-MM-dd HH:mm:ss");
+            string startTime = energyInterval.StartTimestamp.ToString("yyyy-MM-dd HH:mm:ss");
+            string endTime = energyInterval.EndTimestamp.ToString("yyyy-MM-dd HH:mm:ss");
             string startTimeArg = $"--start-time \"{startTime}\"";
             string endTimeArg = $"--end-time \"{endTime}\"";
 
@@ -201,10 +202,10 @@ namespace BenchmarkDotNet.Diagnosers
                     energyInterval.ProcessId = parameters.Process.Id;
                     break;
                 case HostSignal.BeforeActualRun:
-                    energyInterval.StartTimestamp = Chronometer.Stopwatch.GetTimestamp();
+                    energyInterval.StartTimestamp = DateTime.Now;
                     break;
                 case HostSignal.AfterActualRun:
-                    energyInterval.EndTimestamp = Chronometer.Stopwatch.GetTimestamp();
+                    energyInterval.EndTimestamp = DateTime.Now;
                     break;
                 case HostSignal.AfterAll:
                     StopMetrion(parameters);
