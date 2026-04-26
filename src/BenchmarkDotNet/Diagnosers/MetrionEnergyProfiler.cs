@@ -6,6 +6,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using BenchmarkDotNet.Analysers;
+using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Detectors;
 using BenchmarkDotNet.Engines;
 using BenchmarkDotNet.Exporters;
@@ -141,7 +142,33 @@ namespace BenchmarkDotNet.Diagnosers
             return totalEnergy;
         }
 
-        public IEnumerable<Metric> ProcessResults(DiagnoserResults results) => Array.Empty<Metric>();
+        public IEnumerable<Metric> ProcessResults(DiagnoserResults results)
+        {
+            if (!energyIntervals.TryGetValue(currentBenchmarkId, out var energyInterval))
+            {
+                yield return new Metric(EnergyMetricDescriptor.AverageMetrionCpuEnergyPerOperation, double.NaN);
+                yield return new Metric(EnergyMetricDescriptor.AverageMetrionCpuEnergyPerIteration, double.NaN);
+                yield break;
+            }
+
+            var energyUj = energyInterval.EnergyJ * 1_000_000;
+
+            var samples = results.Measurements
+                .Where(m => m.IterationMode == IterationMode.Workload &&
+                            m.IterationStage == IterationStage.Actual)
+                .ToList();
+
+            var energyPerOpSeries = samples
+                .Where(m => m.Operations > 0)
+                .Select(m => energyUj / m.Operations)
+                .ToArray();
+
+            var energyPerOp = energyPerOpSeries.Length > 0 ? energyPerOpSeries.Average() : double.NaN;
+            var energyPerIter = samples.Any() ? energyUj / samples.Count : double.NaN;
+
+            yield return new Metric(EnergyMetricDescriptor.AverageMetrionCpuEnergyPerOperation, energyPerOp);
+            yield return new Metric(EnergyMetricDescriptor.AverageMetrionCpuEnergyPerIteration, energyPerIter);
+        }
 
         public void DisplayResults(ILogger logger)
         {
@@ -170,10 +197,10 @@ namespace BenchmarkDotNet.Diagnosers
                     energyInterval.ProcessId = parameters.Process.Id;
                     break;
                 case HostSignal.BeforeActualRun:
-                    energyInterval.StartTimestamp = Chronometer.GetTimestamp() / 1_000_000;
+                    energyInterval.StartTimestamp = Chronometer.Stopwatch.GetTimestamp();
                     break;
                 case HostSignal.AfterActualRun:
-                    energyInterval.EndTimestamp = Chronometer.GetTimestamp() / 1_000_000;
+                    energyInterval.EndTimestamp = Chronometer.Stopwatch.GetTimestamp();
                     break;
                 case HostSignal.AfterAll:
                     StopMetrion(parameters);
@@ -254,5 +281,45 @@ namespace BenchmarkDotNet.Diagnosers
                 metrionProcess.Dispose();
             }
         }
+
+        private class EnergyMetricDescriptor : IMetricDescriptor
+        {
+            internal static IMetricDescriptor AverageMetrionCpuEnergyPerOperation =
+                new EnergyMetricDescriptor(
+                    $"AvgMetrionCpuEnergyPerOp",
+                    Column.MetrionCpuEnergyPerOp,
+                    $"Average CPU core energy consumed per benchmark operation (uJ), captured with Metrion.",
+                    numberFormat: "#0.00");
+
+            internal static IMetricDescriptor AverageMetrionCpuEnergyPerIteration =
+                new EnergyMetricDescriptor(
+                    $"AvgMetrionCpuEnergyPerIter",
+                    Column.MetrionCpuEnergyPerIter,
+                    $"Average CPU core energy consumed per benchmark iteration (uJ), captured with Metrion.",
+                    numberFormat: "#0.00");
+
+            private EnergyMetricDescriptor(string id, string columnName, string legend,
+                string numberFormat = "#0.00 uj", string unit = "uJ")
+            {
+                Id = id;
+                DisplayName = columnName;
+                Legend = legend;
+                NumberFormat = numberFormat;
+                Unit = unit;
+            }
+
+            public string Id { get; }
+            public string DisplayName { get; }
+            public string Legend { get; }
+            public string NumberFormat { get; }
+            public UnitType UnitType => UnitType.Dimensionless;
+            public string Unit { get; }
+            public bool TheGreaterTheBetter => false;
+            public int PriorityInCategory { get; }
+            public bool GetIsAvailable(Metric metric)
+                => !double.IsNaN(metric.Value) && metric.Value != 0.0;
+        }
     }
+
+
 }
