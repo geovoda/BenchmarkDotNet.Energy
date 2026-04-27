@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.Tracing;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -34,6 +35,7 @@ namespace BenchmarkDotNet.Diagnosers
         public static readonly IDiagnoser Default = new MetrionEnergyProfiler(new MetrionEnergyProfilerConfig("/home/test/tools/metrion-internal/.venv/bin/metrion", "/home/test/tools/metrion-internal", keepMetrionDatabaseFiles: true));
         private readonly MetrionEnergyProfilerConfig config;
         private readonly Dictionary<BenchmarkCase, EnergyInterval> energyIntervals = new();
+        private readonly EngineListener engineListener = new EngineListener();
         private Process? metrionProcess;
 
         [PublicAPI]
@@ -331,6 +333,20 @@ namespace BenchmarkDotNet.Diagnosers
             public int PriorityInCategory { get; }
             public bool GetIsAvailable(Metric metric)
                 => !double.IsNaN(metric.Value) && metric.Value != 0.0;
+        }
+
+        private sealed class EngineListener : EventListener
+        {
+            public EngineListener()
+            {
+                EnableEvents(EngineEventSource.Log, EventLevel.Informational);
+            }
+
+
+            protected override void OnEventWritten(EventWrittenEventArgs eventData)
+            {
+                Console.WriteLine($"{DateTimeOffset.UtcNow:O} | {eventData.EventId} | {eventData.EventName}");
+            }
         }
     }
 
