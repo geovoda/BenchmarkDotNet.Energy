@@ -35,7 +35,7 @@ namespace BenchmarkDotNet.Diagnosers
         public static readonly IDiagnoser Default = new MetrionEnergyProfiler(new MetrionEnergyProfilerConfig("/home/test/tools/metrion-internal/.venv/bin/metrion", "/home/test/tools/metrion-internal", keepMetrionDatabaseFiles: true));
         private readonly MetrionEnergyProfilerConfig config;
         private readonly Dictionary<BenchmarkCase, EnergyInterval> energyIntervals = new();
-        private readonly EngineListener engineListener = new EngineListener();
+        private EngineEventListener listener;
         private Process? metrionProcess;
 
         [PublicAPI]
@@ -113,6 +113,19 @@ namespace BenchmarkDotNet.Diagnosers
                 File.Move(latestMetrionDbFile.FullName, traceFilePath.FullName);
                 energyIntervals[parameters.BenchmarkCase].traceFile = traceFilePath;
             }
+        }
+
+        private void DisplayEventsTimestamps(DiagnoserActionParameters parameters)
+        {
+            var logger = parameters.Config.GetCompositeLogger();
+
+            if (listener.EventTimestamps.Count == 0)
+            {
+                logger.WriteLineInfo($"{nameof(MetrionEnergyProfiler)}: No events captured from EngineEventSource.");
+                return;
+            }
+
+            logger.WriteLineInfo($"{nameof(MetrionEnergyProfiler)}: Captured {listener.EventTimestamps.Count} event(s) from EngineEventSource. Example timestamp: {listener.EventTimestamps.First().Ticks}");
         }
 
         private double ExtractLatestMetrionEnergyMeasurement(ILogger logger, int processId)
@@ -207,6 +220,7 @@ namespace BenchmarkDotNet.Diagnosers
             {
                 case HostSignal.BeforeAnythingElse:
                     StartMetrion(parameters);
+                    listener = new EngineEventListener(EngineEventSource.Log.Name);
                     break;
                 case HostSignal.AfterProcessStart:
                     energyInterval.ProcessId = parameters.Process.Id;
@@ -220,6 +234,8 @@ namespace BenchmarkDotNet.Diagnosers
                 case HostSignal.AfterAll:
                     StopMetrion(parameters);
                     AnalyzeMetrionDatabase(parameters);
+                    DisplayEventsTimestamps(parameters);
+                    listener.Dispose();
                     break;
             }
 
@@ -335,17 +351,33 @@ namespace BenchmarkDotNet.Diagnosers
                 => !double.IsNaN(metric.Value) && metric.Value != 0.0;
         }
 
-        private sealed class EngineListener : EventListener
+        public class EngineEventListener : EventListener
         {
-            public EngineListener()
+            private readonly string sourceName;
+            public List<DateTime> EventTimestamps { get; } = new List<DateTime>();
+
+            public EngineEventListener(string sourceName)
             {
-                EnableEvents(EngineEventSource.Log, EventLevel.Informational);
+                this.sourceName = sourceName;
             }
 
+            protected override void OnEventSourceCreated(EventSource eventSource)
+            {
+                // Match by the name defined in your EngineEventSource
+                if (eventSource.Name == sourceName)
+                {
+                    // Enable events for this source
+                    EnableEvents(eventSource, EventLevel.LogAlways, EventKeywords.All);
+                }
+            }
 
             protected override void OnEventWritten(EventWrittenEventArgs eventData)
             {
-                Console.WriteLine($"{DateTimeOffset.UtcNow:O} | {eventData.EventId} | {eventData.EventName}");
+                // Filter by the specific event name you are tracking
+                if (eventData.EventId == EngineEventSource.WorkloadActualStartEventId)
+                {
+                    EventTimestamps.Add(DateTime.Now);
+                }
             }
         }
     }
