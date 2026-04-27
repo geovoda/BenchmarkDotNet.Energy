@@ -253,6 +253,10 @@ namespace BenchmarkDotNet.Diagnosers
             {
                 yield return new ValidationError(true, "Metrion Binary not found!");
             }
+            if (!EngineEventSource.Log.IsEnabled())
+            {
+                yield return new ValidationError(true, "Engine Event Source is not enabled.");
+            }
         }
 
         private bool StartMetrion(DiagnoserActionParameters parameters)
