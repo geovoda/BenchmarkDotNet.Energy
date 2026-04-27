@@ -72,8 +72,8 @@ namespace BenchmarkDotNet.Columns
         public const string PsysEnergyPerIter = "Psys E (uJ/iter)";
         public const string AverageTemperaturePerIter = "Avg Temp{0} (degC)";
 
-        public const string MetrionCpuEnergyPerOp = "Metrion CPU Enery (uJ/op)";
-        public const string MetrionCpuEnergyPerIter = "Metrion CPU Enery (uJ/iter)";
+        public const string MetrionCpuEnergyPerOp = "Metrion CPU Energy (uJ/op)";
+        public const string MetrionCpuEnergyPerIter = "Metrion CPU Energy (uJ/iter)";
 
         //Characteristics:
         public const string Id = "Id";
