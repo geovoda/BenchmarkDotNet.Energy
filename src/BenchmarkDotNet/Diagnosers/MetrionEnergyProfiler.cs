@@ -18,7 +18,6 @@ using BenchmarkDotNet.Reports;
 using BenchmarkDotNet.Running;
 using BenchmarkDotNet.Validators;
 using JetBrains.Annotations;
-using Perfolizer.Horology;
 
 namespace BenchmarkDotNet.Diagnosers
 {
@@ -28,6 +27,7 @@ namespace BenchmarkDotNet.Diagnosers
         public DateTime StartTimestamp { get; set; }
         public DateTime EndTimestamp { get; set; }
         public double EnergyJ    { get; set; }
+        public FileInfo traceFile { get; set; }
     }
     public class MetrionEnergyProfiler : IProfiler
     {
@@ -51,7 +51,7 @@ namespace BenchmarkDotNet.Diagnosers
         private void AnalyzeMetrionDatabase(DiagnoserActionParameters parameters)
         {
             var logger = parameters.Config.GetCompositeLogger();
-            logger.WriteLineInfo($"Analyzing latest Metrion database file.");
+            logger.WriteLineInfo($"{nameof(MetrionEnergyProfiler)}: Analyzing latest database file.");
 
             var latestMetrionDbFile = Directory
                 .GetFiles(config.MetrionDatabaseDirectory.FullName, config.MetrionDatabaseNamePattern)
@@ -61,7 +61,7 @@ namespace BenchmarkDotNet.Diagnosers
 
             if (latestMetrionDbFile == null)
             {
-                logger.WriteLineError($"Metrion latest database file not found: {config.MetrionDatabaseDirectory.FullName}");
+                logger.WriteLineError($"{nameof(MetrionEnergyProfiler)}: The latest database file not found: {config.MetrionDatabaseDirectory.FullName}");
                 return;
             }
 
@@ -69,7 +69,7 @@ namespace BenchmarkDotNet.Diagnosers
 
             if (!energyIntervals.TryGetValue(parameters.BenchmarkCase, out var energyInterval))
             {
-                logger.WriteLineError($"Metrion benchmark information not found.");
+                logger.WriteLineError($"{nameof(MetrionEnergyProfiler)}: Missing energy interval for benchmark case '{parameters.BenchmarkCase}' in {nameof(energyIntervals)}.");
                 return;
             }
 
@@ -109,6 +109,7 @@ namespace BenchmarkDotNet.Diagnosers
             {
                 var traceFilePath = new FileInfo(ArtifactFileNameHelper.GetTraceFilePath(parameters, latestMetrionDbFile.CreationTime, $"pid{energyInterval.ProcessId}.db"));
                 File.Move(latestMetrionDbFile.FullName, traceFilePath.FullName);
+                energyIntervals[parameters.BenchmarkCase].traceFile = traceFilePath;
             }
         }
 
@@ -118,7 +119,7 @@ namespace BenchmarkDotNet.Diagnosers
 
             if (!measurementsDirectory.Exists)
             {
-                logger.WriteLineError($"Unable to find measurements directory: {measurementsDirectory.FullName}");
+                logger.WriteLineError($"{nameof(MetrionEnergyProfiler)}: Unable to find measurements directory: {measurementsDirectory.FullName}");
                 return 0;
             }
 
@@ -130,14 +131,14 @@ namespace BenchmarkDotNet.Diagnosers
 
             if (latestMetrionOutputFile == null)
             {
-                logger.WriteLineError($"The measurements files were not found in the directory {measurementsDirectory.FullName}");
+                logger.WriteLineError($"{nameof(MetrionEnergyProfiler)}: The measurements were not found in the directory {measurementsDirectory.FullName}");
                 return 0;
             }
 
             var jsonFile = File.ReadAllText(latestMetrionOutputFile.FullName);
             if (!jsonFile.Contains($"[{processId}]"))
             {
-                logger.WriteLineError($"The latest measurement file ({latestMetrionOutputFile.Name}) contains a different processId. Expected: {processId}.");
+                logger.WriteLineError($"{nameof(MetrionEnergyProfiler)}: The latest measurement file ({latestMetrionOutputFile.Name}) contains a different processId. Expected: {processId}.");
                 return 0;
             }
 
@@ -168,12 +169,9 @@ namespace BenchmarkDotNet.Diagnosers
                             m.IterationStage == IterationStage.Actual)
                 .ToList();
 
-            var energyPerOpSeries = samples
-                .Where(m => m.Operations > 0)
-                .Select(m => energyUj / m.Operations)
-                .ToArray();
+            var operationsTotalCount = samples.Select(m =>  m.Operations).Sum();
 
-            var energyPerOp = energyPerOpSeries.Length > 0 ? energyPerOpSeries.Average() : double.NaN;
+            var energyPerOp = operationsTotalCount > 0 ? energyUj / operationsTotalCount : double.NaN;
             var energyPerIter = samples.Any() ? energyUj / samples.Count : double.NaN;
 
             yield return new Metric(EnergyMetricDescriptor.AverageMetrionCpuEnergyPerOperation, energyPerOp);
@@ -188,6 +186,12 @@ namespace BenchmarkDotNet.Diagnosers
             }
 
             logger.WriteLineInfo($"Metrion measured the energy for a total of {energyIntervals.Count} benchmarks.");
+
+            if (config.KeepMetrionDatabaseFiles)
+            {
+                logger.WriteLineInfo($"The database files for each benchmark were stored in the Artifacts folder. e.g: ");
+                logger.WriteLineInfo($"{energyIntervals.First().Value.traceFile.FullName}");
+            }
         }
 
         public void Handle(HostSignal signal, DiagnoserActionParameters parameters)
@@ -225,7 +229,7 @@ namespace BenchmarkDotNet.Diagnosers
         {
             if (!OsDetector.IsLinux())
             {
-                yield return new ValidationError(true, "The EnergyProfiler works only on Linux!");
+                yield return new ValidationError(true, "MetrionEnergyProfiler works only on Linux!");
             }
             if (!config.MetrionBinaryPath.Exists)
             {
@@ -271,18 +275,18 @@ namespace BenchmarkDotNet.Diagnosers
                     if (libc.kill(metrionProcess.Id, libc.Signals.SIGINT) != 0)
                     {
                         int lastError = Marshal.GetLastWin32Error();
-                        logger.WriteLineError($"kill(metrion, SIGINT) failed with {lastError}");
+                        logger.WriteLineError($"{nameof(MetrionEnergyProfiler)}: kill(metrion, SIGINT) failed with {lastError}");
                     }
 
                     if (!metrionProcess.WaitForExit((int)config.Timeout.TotalMilliseconds))
                     {
-                        logger.WriteLineError($"The Metrion script did not stop in {config.Timeout.TotalSeconds}s. It's going to be force killed now.");
+                        logger.WriteLineError($"{nameof(MetrionEnergyProfiler)}: The Metrion script did not stop in {config.Timeout.TotalSeconds}s. It's going to be force killed now.");
                         metrionProcess.KillTree(); // kill the entire process tree
                     }
                 }
                 else
                 {
-                    logger.WriteLineError("For some reason the metrion script has finished sooner than expected.");
+                    logger.WriteLineError($"{nameof(MetrionEnergyProfiler)}: For some reason the metrion script has finished sooner than expected.");
                 }
             }
             finally
