@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Threading.Tasks;
 using BenchmarkDotNet.Analysers;
 using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Detectors;
@@ -20,6 +21,7 @@ using BenchmarkDotNet.Running;
 using BenchmarkDotNet.Validators;
 using JetBrains.Annotations;
 using Microsoft.Diagnostics.NETCore.Client;
+using Microsoft.Diagnostics.Tracing;
 
 namespace BenchmarkDotNet.Diagnosers
 {
@@ -36,8 +38,8 @@ namespace BenchmarkDotNet.Diagnosers
         public static readonly IDiagnoser Default = new MetrionEnergyProfiler(new MetrionEnergyProfilerConfig("/home/test/tools/metrion-internal/.venv/bin/metrion", "/home/test/tools/metrion-internal", keepMetrionDatabaseFiles: true));
         private readonly MetrionEnergyProfilerConfig config;
         private readonly Dictionary<BenchmarkCase, EnergyInterval> energyIntervals = new();
-        private EventPipeProvider eventPipeProvider;
-        private EngineEventListener listener;
+        private EventPipeSession session;
+        private Task eventTask;
         private Process? metrionProcess;
 
         [PublicAPI]
@@ -115,19 +117,6 @@ namespace BenchmarkDotNet.Diagnosers
                 File.Move(latestMetrionDbFile.FullName, traceFilePath.FullName);
                 energyIntervals[parameters.BenchmarkCase].traceFile = traceFilePath;
             }
-        }
-
-        private void DisplayEventsTimestamps(DiagnoserActionParameters parameters)
-        {
-            var logger = parameters.Config.GetCompositeLogger();
-
-            if (listener.EventTimestamps.Count == 0)
-            {
-                logger.WriteLineInfo($"{nameof(MetrionEnergyProfiler)}: No events captured from EngineEventSource.");
-                return;
-            }
-
-            logger.WriteLineInfo($"{nameof(MetrionEnergyProfiler)}: Captured {listener.EventTimestamps.Count} event(s) from EngineEventSource. Example timestamp: {listener.EventTimestamps.First().Ticks}");
         }
 
         private double ExtractLatestMetrionEnergyMeasurement(ILogger logger, int processId)
@@ -222,7 +211,7 @@ namespace BenchmarkDotNet.Diagnosers
             {
                 case HostSignal.BeforeAnythingElse:
                     StartMetrion(parameters);
-                    listener = new EngineEventListener(EngineEventSource.Log.Name);
+                    StartEventProfiling(parameters);
                     break;
                 case HostSignal.AfterProcessStart:
                     energyInterval.ProcessId = parameters.Process.Id;
@@ -235,15 +224,56 @@ namespace BenchmarkDotNet.Diagnosers
                     break;
                 case HostSignal.AfterAll:
                     StopMetrion(parameters);
+                    StopEventProfiling();
                     AnalyzeMetrionDatabase(parameters);
-                    DisplayEventsTimestamps(parameters);
-                    listener.Dispose();
                     break;
             }
 
             energyIntervals.Remove(parameters.BenchmarkCase);
             energyIntervals.Add(parameters.BenchmarkCase, energyInterval);
         }
+
+        private void StartEventProfiling(DiagnoserActionParameters parameters)
+        {
+            var pid = parameters.Process.Id;
+            var client = new DiagnosticsClient(pid);
+
+            var providers = new[]
+            {
+                new EventPipeProvider(
+                    EngineEventSource.SourceName,
+                    EventLevel.Informational,
+                    long.MaxValue)
+            };
+
+            this.session = client.StartEventPipeSession(providers, false);
+
+            this.eventTask = Task.Run(() =>
+            {
+                using (var source = new EventPipeEventSource(this.session.EventStream))
+                {
+                    source.Dynamic.All += (TraceEvent data) =>
+                    {
+                        if ((int)data.ID == EngineEventSource.WorkloadActualStartEventId)
+                        {
+                            Console.WriteLine($"Event: {data.EventName}, Timestamp: {data.TimeStamp}");
+                        }
+                    };
+                    source.Process();
+                }
+            });
+        }
+
+        private void StopEventProfiling()
+        {
+            this.session?.Stop();
+            this.session?.Dispose();
+
+            // Wait for the event processing task to complete gracefully
+            this.eventTask?.Wait();
+        }
+
+
 
         public IEnumerable<ValidationError> Validate(ValidationParameters validationParameters)
         {
@@ -254,13 +284,6 @@ namespace BenchmarkDotNet.Diagnosers
             if (!config.MetrionBinaryPath.Exists)
             {
                 yield return new ValidationError(true, "Metrion Binary not found!");
-            }
-
-            eventPipeProvider = new EventPipeProvider(EngineEventSource.SourceName, EventLevel.Informational, long.MaxValue);
-
-            if (!EngineEventSource.Log.IsEnabled())
-            {
-                yield return new ValidationError(true, "Engine Event Source is not enabled.");
             }
         }
 
@@ -359,37 +382,5 @@ namespace BenchmarkDotNet.Diagnosers
             public bool GetIsAvailable(Metric metric)
                 => !double.IsNaN(metric.Value) && metric.Value != 0.0;
         }
-
-        public class EngineEventListener : EventListener
-        {
-            private readonly string sourceName;
-            public List<DateTime> EventTimestamps { get; } = new List<DateTime>();
-
-            public EngineEventListener(string sourceName)
-            {
-                this.sourceName = sourceName;
-            }
-
-            protected override void OnEventSourceCreated(EventSource eventSource)
-            {
-                // Match by the name defined in your EngineEventSource
-                if (eventSource.Name == sourceName)
-                {
-                    // Enable events for this source
-                    EnableEvents(eventSource, EventLevel.LogAlways, EventKeywords.All);
-                }
-            }
-
-            protected override void OnEventWritten(EventWrittenEventArgs eventData)
-            {
-                // Filter by the specific event name you are tracking
-                if (eventData.EventId == EngineEventSource.WorkloadActualStartEventId)
-                {
-                    EventTimestamps.Add(DateTime.Now);
-                }
-            }
-        }
     }
-
-
 }
