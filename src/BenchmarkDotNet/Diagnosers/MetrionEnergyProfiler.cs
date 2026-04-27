@@ -19,6 +19,7 @@ using BenchmarkDotNet.Reports;
 using BenchmarkDotNet.Running;
 using BenchmarkDotNet.Validators;
 using JetBrains.Annotations;
+using Microsoft.Diagnostics.NETCore.Client;
 
 namespace BenchmarkDotNet.Diagnosers
 {
@@ -35,6 +36,7 @@ namespace BenchmarkDotNet.Diagnosers
         public static readonly IDiagnoser Default = new MetrionEnergyProfiler(new MetrionEnergyProfilerConfig("/home/test/tools/metrion-internal/.venv/bin/metrion", "/home/test/tools/metrion-internal", keepMetrionDatabaseFiles: true));
         private readonly MetrionEnergyProfilerConfig config;
         private readonly Dictionary<BenchmarkCase, EnergyInterval> energyIntervals = new();
+        private EventPipeProvider eventPipeProvider;
         private EngineEventListener listener;
         private Process? metrionProcess;
 
@@ -253,6 +255,9 @@ namespace BenchmarkDotNet.Diagnosers
             {
                 yield return new ValidationError(true, "Metrion Binary not found!");
             }
+
+            eventPipeProvider = new EventPipeProvider(EngineEventSource.SourceName, EventLevel.Informational, long.MaxValue);
+
             if (!EngineEventSource.Log.IsEnabled())
             {
                 yield return new ValidationError(true, "Engine Event Source is not enabled.");
