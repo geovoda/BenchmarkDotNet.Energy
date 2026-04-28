@@ -245,7 +245,7 @@ namespace BenchmarkDotNet.Diagnosers
                         var benchmarkCase = kvp.Key;
                         var energyInterval = kvp.Value;
 
-                        for (int i = 0; i < energyInterval.EnergyPerIteration.Count;)
+                        for (int i = 0; i < energyInterval.EnergyPerIteration.Count; ++i)
                         {
                             streamLogger.Write(CsvHelper.Escape(benchmarkCase.Descriptor.Type.Name, realSeparator));
                             streamLogger.Write(realSeparator);
@@ -257,9 +257,7 @@ namespace BenchmarkDotNet.Diagnosers
                             streamLogger.Write(realSeparator);
 
                             streamLogger.Write(CsvHelper.Escape(energyInterval.EnergyPerIteration[i].ToString(), realSeparator));
-
-                            if (++i < energyInterval.EnergyPerIteration.Count)
-                                streamLogger.WriteLine();
+                            streamLogger.WriteLine();
                         }
 
                     }
