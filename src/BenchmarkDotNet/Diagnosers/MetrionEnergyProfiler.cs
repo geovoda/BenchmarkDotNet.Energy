@@ -12,6 +12,7 @@ using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Detectors;
 using BenchmarkDotNet.Engines;
 using BenchmarkDotNet.Exporters;
+using BenchmarkDotNet.Exporters.Csv;
 using BenchmarkDotNet.Extensions;
 using BenchmarkDotNet.Helpers;
 using BenchmarkDotNet.Loggers;
@@ -30,9 +31,12 @@ namespace BenchmarkDotNet.Diagnosers
         public int ProcessId { get; set; }
         public DateTime StartTimestamp { get; set; }
         public DateTime EndTimestamp { get; set; }
-        public double EnergyJ    { get; set; }
-        public FileInfo traceFile { get; set; }
+        public double EnergyJ { get; set; }
+        public FileInfo TraceFile { get; set; }
+        public List<DateTime> IterationTimestamps { get; } = new();
+        public List<double> EnergyPerIteration { get; } = new();
     }
+
     public class MetrionEnergyProfiler : IProfiler
     {
         public static readonly IDiagnoser Default = new MetrionEnergyProfiler(new MetrionEnergyProfilerConfig("/home/test/tools/metrion-internal/.venv/bin/metrion", "/home/test/tools/metrion-internal", keepMetrionDatabaseFiles: true));
@@ -41,6 +45,7 @@ namespace BenchmarkDotNet.Diagnosers
         private EventPipeSession session;
         private Task eventTask;
         private Process? metrionProcess;
+        private DirectoryInfo artifactsPath;
 
         [PublicAPI]
         public MetrionEnergyProfiler(MetrionEnergyProfilerConfig config) => this.config = config;
@@ -111,11 +116,60 @@ namespace BenchmarkDotNet.Diagnosers
 
             energyIntervals[parameters.BenchmarkCase].EnergyJ = ExtractLatestMetrionEnergyMeasurement(logger, energyInterval.ProcessId);
 
+            // Process energy per iteration
+            if (energyInterval.IterationTimestamps.Count % 2 == 0)
+            {
+                energyInterval.IterationTimestamps.Sort();
+                logger.WriteLineInfo($"{nameof(MetrionEnergyProfiler)}: Start processing the energy for each iteration.");
+
+                for (int i = 0; i < energyInterval.IterationTimestamps.Count / 2; i++)
+                {
+                    var startIndex = i * 2;
+                    var endIndex = i * 2 + 1;
+
+                    var startTimestamp = energyInterval.IterationTimestamps[startIndex].ToString("yyyy-MM-dd HH:mm:ss");
+                    var endTimestamp = energyInterval.IterationTimestamps[endIndex].ToString("yyyy-MM-dd HH:mm:ss");
+
+                    startTimeArg = $"--start-time \"{startTimestamp}\"";
+                    endTimeArg = $"--end-time \"{endTimestamp}\"";
+
+                    processStartInfo = new ProcessStartInfo
+                    {
+                        FileName = config.MetrionBinaryPath.FullName,
+                        Arguments = $"analyze --no-plots --export-summary {startTimeArg} {endTimeArg} {dbPathArg} {pidsArg}",
+                        UseShellExecute = false,
+                        RedirectStandardOutput = true,
+                        CreateNoWindow = true,
+                        WorkingDirectory = config.MetrionDatabaseDirectory.FullName,
+                    };
+
+                    logger.WriteLineInfo($"// Execute: {processStartInfo.FileName} {processStartInfo.Arguments} in {processStartInfo.WorkingDirectory}");
+                    analyzeProcess = Process.Start(processStartInfo);
+
+                    if (analyzeProcess == null)
+                        return;
+
+                    if (!analyzeProcess.WaitForExit(1000 * 10))
+                    {
+                        analyzeProcess.KillTree();
+                    }
+
+                    analyzeProcess.Dispose();
+
+                    double iterationEnergy = ExtractLatestMetrionEnergyMeasurement(logger, energyInterval.ProcessId);
+                    energyInterval.EnergyPerIteration.Add(iterationEnergy);
+                }
+            }
+            else
+            {
+                logger.WriteLineError($"{nameof(MetrionEnergyProfiler)}: The number of iteration timestamps is odd ({energyInterval.IterationTimestamps.Count}), unable to calculate energy per iteration.");
+            }
+
             if (config.KeepMetrionDatabaseFiles)
             {
                 var traceFilePath = new FileInfo(ArtifactFileNameHelper.GetTraceFilePath(parameters, latestMetrionDbFile.CreationTime, $"pid{energyInterval.ProcessId}.db"));
                 File.Move(latestMetrionDbFile.FullName, traceFilePath.FullName);
-                energyIntervals[parameters.BenchmarkCase].traceFile = traceFilePath;
+                energyIntervals[parameters.BenchmarkCase].TraceFile = traceFilePath;
             }
         }
 
@@ -159,6 +213,62 @@ namespace BenchmarkDotNet.Diagnosers
             return totalEnergy;
         }
 
+        private string ExportMetrionMeasurementsAsCsv()
+        {
+            string realSeparator = CsvSeparator.Comma.ToRealSeparator();
+
+            string uniqueString = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+            var distinctNames = energyIntervals.Select(kvp => kvp.Key.Descriptor.Type.Name).Distinct();
+            var pathPrefix = distinctNames.Count() == 1 ? distinctNames.First() : "All";
+            var filePath = Path.Combine(artifactsPath.FullName, "results", $"{pathPrefix}_metrion_measurements_{uniqueString}.csv");
+
+            using (var stream = new StreamWriter(filePath, append: false))
+            {
+                using (var streamLogger = new StreamLogger(stream))
+                {
+                    // Writing header
+                    streamLogger.Write("Target");
+                    streamLogger.Write(realSeparator);
+
+                    streamLogger.Write("TargetMethod");
+                    streamLogger.Write(realSeparator);
+
+                    streamLogger.Write("Measurement_IterationIndex");
+                    streamLogger.Write(realSeparator);
+
+                    streamLogger.Write("Measurement_MetrionEnergy");
+                    streamLogger.WriteLine();
+
+                    // Writing lines
+                    foreach (var kvp in energyIntervals)
+                    {
+                        var benchmarkCase = kvp.Key;
+                        var energyInterval = kvp.Value;
+
+                        for (int i = 0; i < energyInterval.EnergyPerIteration.Count;)
+                        {
+                            streamLogger.Write(CsvHelper.Escape(benchmarkCase.Descriptor.Type.Name, realSeparator));
+                            streamLogger.Write(realSeparator);
+
+                            streamLogger.Write(CsvHelper.Escape(benchmarkCase.Descriptor.WorkloadMethodDisplayInfo, realSeparator));
+                            streamLogger.Write(realSeparator);
+
+                            streamLogger.Write(i.ToString());
+                            streamLogger.Write(realSeparator);
+
+                            streamLogger.Write(CsvHelper.Escape(energyInterval.EnergyPerIteration[i].ToString(), realSeparator));
+
+                            if (++i < energyInterval.EnergyPerIteration.Count)
+                                streamLogger.WriteLine();
+                        }
+
+                    }
+                }
+            }
+
+            return filePath;
+        }
+
         public IEnumerable<Metric> ProcessResults(DiagnoserResults results)
         {
             if (!energyIntervals.TryGetValue(results.BenchmarkCase, out var energyInterval))
@@ -175,10 +285,13 @@ namespace BenchmarkDotNet.Diagnosers
                             m.IterationStage == IterationStage.Actual)
                 .ToList();
 
-            var operationsTotalCount = samples.Select(m =>  m.Operations).Sum();
+            var perOpSeries = samples
+                .Where(m => (m.Operations > 0))
+                .Select(m => energyInterval.EnergyPerIteration.Count > m.IterationIndex ? energyInterval.EnergyPerIteration[m.IterationIndex] / m.Operations : double.NaN)
+                .ToArray();
 
-            var energyPerOp = operationsTotalCount > 0 ? energyUj / operationsTotalCount : double.NaN;
-            var energyPerIter = samples.Any() ? energyUj / samples.Count : double.NaN;
+            var energyPerOp = perOpSeries.Length > 0 ? perOpSeries.Average() : double.NaN;
+            var energyPerIter = energyInterval.EnergyPerIteration.Any() ? energyInterval.EnergyPerIteration.Average() : double.NaN;
 
             yield return new Metric(EnergyMetricDescriptor.AverageMetrionCpuEnergyPerOperation, energyPerOp);
             yield return new Metric(EnergyMetricDescriptor.AverageMetrionCpuEnergyPerIteration, energyPerIter);
@@ -196,8 +309,11 @@ namespace BenchmarkDotNet.Diagnosers
             if (config.KeepMetrionDatabaseFiles)
             {
                 logger.WriteLineInfo($"The database files for each benchmark were stored in the Artifacts folder. e.g: ");
-                logger.WriteLineInfo($"{energyIntervals.First().Value.traceFile.FullName}");
+                logger.WriteLineInfo($"{energyIntervals.First().Value.TraceFile.FullName}");
             }
+
+            var exportedFilePath = ExportMetrionMeasurementsAsCsv();
+            logger.WriteLineInfo("Metrion measurements exported to " + exportedFilePath);
         }
 
         public void Handle(HostSignal signal, DiagnoserActionParameters parameters)
@@ -252,13 +368,7 @@ namespace BenchmarkDotNet.Diagnosers
             {
                 using (var source = new EventPipeEventSource(this.session.EventStream))
                 {
-                    source.Dynamic.All += (TraceEvent data) =>
-                    {
-                        if ((int)data.ID == EngineEventSource.WorkloadActualStartEventId)
-                        {
-                            Console.WriteLine($"Event: {data.EventName}, Timestamp: {data.TimeStamp}");
-                        }
-                    };
+                    source.Dynamic.All += (TraceEvent data) => AddIterationTimestamp(parameters.BenchmarkCase, data);
                     source.Process();
                 }
             });
@@ -273,6 +383,18 @@ namespace BenchmarkDotNet.Diagnosers
             this.eventTask?.Wait();
         }
 
+        private void AddIterationTimestamp(BenchmarkCase benchmarkCase, TraceEvent traceEvent)
+        {
+            switch ((int)traceEvent.ID)
+            {
+                case EngineEventSource.WorkloadActualStartEventId:
+                case EngineEventSource.WorkloadActualStopEventId:
+                    if (energyIntervals.TryGetValue(benchmarkCase, out var energyInterval))
+                        energyInterval.IterationTimestamps.Add(traceEvent.TimeStamp);
+                    break;
+            }
+        }
+
 
 
         public IEnumerable<ValidationError> Validate(ValidationParameters validationParameters)
@@ -285,6 +407,8 @@ namespace BenchmarkDotNet.Diagnosers
             {
                 yield return new ValidationError(true, "Metrion Binary not found!");
             }
+
+            artifactsPath = new DirectoryInfo(validationParameters.Config.ArtifactsPath);
         }
 
         private bool StartMetrion(DiagnoserActionParameters parameters)
