@@ -419,7 +419,7 @@ namespace BenchmarkDotNet.Diagnosers
                 FileName = config.MetrionBinaryPath.FullName,
                 Arguments = $"monitor",
                 UseShellExecute = false,
-                RedirectStandardOutput = true,
+                RedirectStandardOutput = false,
                 CreateNoWindow = true,
                 WorkingDirectory = config.MetrionBinaryPath.Directory.FullName,
             };
