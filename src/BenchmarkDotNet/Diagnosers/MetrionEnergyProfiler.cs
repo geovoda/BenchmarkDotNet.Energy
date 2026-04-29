@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.Tracing;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -116,7 +117,7 @@ namespace BenchmarkDotNet.Diagnosers
 
             energyIntervals[parameters.BenchmarkCase].EnergyJ = ExtractLatestMetrionEnergyMeasurement(logger, energyInterval.ProcessId);
 
-            // Process energy per iteration
+            /*// Process energy per iteration
             if (energyInterval.IterationTimestamps.Count % 2 == 0)
             {
                 energyInterval.IterationTimestamps.Sort();
@@ -163,7 +164,7 @@ namespace BenchmarkDotNet.Diagnosers
             else
             {
                 logger.WriteLineError($"{nameof(MetrionEnergyProfiler)}: The number of iteration timestamps is odd ({energyInterval.IterationTimestamps.Count}), unable to calculate energy per iteration.");
-            }
+            }*/
 
             if (config.KeepMetrionDatabaseFiles)
             {
@@ -276,7 +277,7 @@ namespace BenchmarkDotNet.Diagnosers
                 yield break;
             }
 
-            var energyUj = energyInterval.EnergyJ * 1_000_000;
+            //var energyUj = energyInterval.EnergyJ * 1_000_000;
 
             var samples = results.Measurements
                 .Where(m => m.IterationMode == IterationMode.Workload &&
