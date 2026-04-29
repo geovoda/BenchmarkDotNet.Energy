@@ -277,20 +277,28 @@ namespace BenchmarkDotNet.Diagnosers
                 yield break;
             }
 
-            //var energyUj = energyInterval.EnergyJ * 1_000_000;
-
             var samples = results.Measurements
                 .Where(m => m.IterationMode == IterationMode.Workload &&
                             m.IterationStage == IterationStage.Actual)
                 .ToList();
 
-            var perOpSeries = samples
+            /*var perOpSeries = samples
                 .Where(m => (m.Operations > 0))
                 .Select(m => energyInterval.EnergyPerIteration.Count > m.IterationIndex ? energyInterval.EnergyPerIteration[m.IterationIndex] / m.Operations : double.NaN)
                 .ToArray();
 
             var energyPerOp = perOpSeries.Length > 0 ? perOpSeries.Average() : double.NaN;
-            var energyPerIter = energyInterval.EnergyPerIteration.Any() ? energyInterval.EnergyPerIteration.Average() : double.NaN;
+            var energyPerIter = energyInterval.EnergyPerIteration.Any() ? energyInterval.EnergyPerIteration.Average() : double.NaN;*/
+
+            var energyUj = energyInterval.EnergyJ * 1_000_000;
+
+            var perOpSeries = samples
+                .Where(m => (m.Operations > 0))
+                .Select(m => m.Operations)
+                .ToList();
+
+            var energyPerOp = perOpSeries.Any() ?  energyUj / perOpSeries.Sum() : double.NaN;
+            var energyPerIter = samples.Any() ? energyUj / samples.Count : double.NaN;
 
             yield return new Metric(EnergyMetricDescriptor.AverageMetrionCpuEnergyPerOperation, energyPerOp);
             yield return new Metric(EnergyMetricDescriptor.AverageMetrionCpuEnergyPerIteration, energyPerIter);
