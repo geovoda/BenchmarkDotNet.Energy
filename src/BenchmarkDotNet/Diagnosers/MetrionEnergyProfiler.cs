@@ -95,7 +95,7 @@ namespace BenchmarkDotNet.Diagnosers
             var processStartInfo = new ProcessStartInfo
             {
                 FileName = config.MetrionBinaryPath.FullName,
-                Arguments = $"analyze --no-plots --export-summary {startTimeArg} {endTimeArg} {dbPathArg} {pidsArg}",
+                Arguments = $"analyze --no-plots --export-summary --export-raw-data {startTimeArg} {endTimeArg} {dbPathArg} {pidsArg}",
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 CreateNoWindow = true,
