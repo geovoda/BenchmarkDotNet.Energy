@@ -346,12 +346,12 @@ namespace BenchmarkDotNet.Diagnosers
                 var perOpSeries = samples
                     .Where(m => m.Operations > 0)
                     .Select(m => energyInterval.EnergyPerIteration.Count > m.IterationIndex
-                        ? energyInterval.EnergyPerIteration[m.IterationIndex] * 1_000_000 / m.Operations
+                        ? energyInterval.EnergyPerIteration[m.IterationIndex] / m.Operations
                         : double.NaN)
                     .ToArray();
 
-                energyPerOp = perOpSeries.Length > 0 ? perOpSeries.Average() : double.NaN;
-                energyPerIter = energyInterval.EnergyPerIteration.Average();
+                energyPerOp = perOpSeries.Length > 0 ? perOpSeries.Average() * 1_000_000 : double.NaN;
+                energyPerIter = energyInterval.EnergyPerIteration.Average() * 1_000_000;
             }
             else
             {
