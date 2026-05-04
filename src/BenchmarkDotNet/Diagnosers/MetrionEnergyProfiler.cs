@@ -87,12 +87,14 @@ namespace BenchmarkDotNet.Diagnosers
             string pidsArg = $"--filter-pids {energyInterval.ProcessId}";
             string startTimeArg = $"--start-time \"{energyInterval.StartTimestamp.ToString("yyyy-MM-dd HH:mm:ss")}\"";
             string endTimeArg = $"--end-time \"{energyInterval.EndTimestamp.ToString("yyyy-MM-dd HH:mm:ss")}\"";
+            string exportArg = config.MeasurePerIteration ? "--export-raw-data" : "--export-summary";
 
-            RunMetrionAnalyzeProcess(logger, $"analyze --no-plots --export-summary --export-raw-data {startTimeArg} {endTimeArg} {dbPathArg} {pidsArg}");
-            energyIntervals[parameters.BenchmarkCase].EnergyJ = ExtractLatestMetrionEnergyMeasurement(logger, energyInterval.ProcessId);
+            RunMetrionAnalyzeProcess(logger, $"analyze --no-plots {exportArg} {startTimeArg} {endTimeArg} {dbPathArg} {pidsArg}");
 
             if (config.MeasurePerIteration)
                 AnalyzeMetrionDatabasePerIteration(logger, energyInterval);
+            else
+                energyIntervals[parameters.BenchmarkCase].EnergyJ = ExtractLatestMetrionEnergyMeasurement(logger, energyInterval.ProcessId);
 
             if (config.KeepMetrionDatabaseFiles)
             {
