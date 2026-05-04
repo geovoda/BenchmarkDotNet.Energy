@@ -126,9 +126,9 @@ namespace BenchmarkDotNet.Diagnosers
             if (analyzeProcess == null)
                 return;
 
-            if (!analyzeProcess.WaitForExit(1000 * 10))
-                analyzeProcess.KillTree();
-
+            // if (!analyzeProcess.WaitForExit(1000 * 10))
+            //     analyzeProcess.KillTree();
+            analyzeProcess.WaitForExit();
             analyzeProcess.Dispose();
         }
 
