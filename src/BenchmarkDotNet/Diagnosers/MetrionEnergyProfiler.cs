@@ -311,7 +311,7 @@ namespace BenchmarkDotNet.Diagnosers
                             streamLogger.Write(CsvHelper.Escape(benchmarkCase.Descriptor.WorkloadMethodDisplayInfo, realSeparator));
                             streamLogger.Write(realSeparator);
 
-                            streamLogger.Write(i.ToString());
+                            streamLogger.Write($"{i + 1}");
                             streamLogger.Write(realSeparator);
 
                             streamLogger.Write(CsvHelper.Escape(energyInterval.EnergyPerIteration[i].ToString(), realSeparator));
