@@ -36,6 +36,7 @@ namespace BenchmarkDotNet.Diagnosers
         public FileInfo TraceFile { get; set; }
         public List<DateTime> IterationTimestamps { get; } = new();
         public List<double> EnergyPerIteration { get; } = new();
+        public List<long> OperationsPerIteration { get; } = new();
     }
 
     public class MetrionEnergyProfiler : IProfiler
@@ -296,6 +297,9 @@ namespace BenchmarkDotNet.Diagnosers
                     streamLogger.Write("Measurement_IterationIndex");
                     streamLogger.Write(realSeparator);
 
+                    streamLogger.Write("Measurement_Operations");
+                    streamLogger.Write(realSeparator);
+
                     streamLogger.Write("Measurement_MetrionEnergy");
                     streamLogger.WriteLine();
 
@@ -314,6 +318,9 @@ namespace BenchmarkDotNet.Diagnosers
                             streamLogger.Write(realSeparator);
 
                             streamLogger.Write($"{i + 1}");
+                            streamLogger.Write(realSeparator);
+
+                            streamLogger.Write(CsvHelper.Escape(energyInterval.OperationsPerIteration[i].ToString(), realSeparator));
                             streamLogger.Write(realSeparator);
 
                             streamLogger.Write(CsvHelper.Escape(energyInterval.EnergyPerIteration[i].ToString(), realSeparator));
@@ -341,16 +348,27 @@ namespace BenchmarkDotNet.Diagnosers
                             m.IterationStage == IterationStage.Actual)
                 .ToList();
 
+            if (config.MeasurePerIteration)
+            {
+                samples.Sort((m1, m2) => m1.IterationIndex.CompareTo(m2.IterationIndex));
+                samples.ForEach(m => energyInterval.OperationsPerIteration.Add(m.Operations));
+            }
+
             double energyPerOp, energyPerIter;
 
             if (config.MeasurePerIteration && energyInterval.EnergyPerIteration.Any())
             {
                 var perOpSeries = samples
                     .Where(m => m.Operations > 0)
-                    .Select(m => energyInterval.EnergyPerIteration.Count > m.IterationIndex
-                        ? energyInterval.EnergyPerIteration[m.IterationIndex] * 1_000_000 / m.Operations
-                        : double.NaN)
-                    .ToArray();
+                    .Select(m =>
+                    {
+                        var idx = m.IterationIndex - 1;
+
+                        if (m.IterationIndex - 1 >= 0 && idx < energyInterval.EnergyPerIteration.Count)
+                            return energyInterval.EnergyPerIteration[idx] * 1_000_000 / m.Operations;
+
+                        return double.NaN;
+                    }).ToArray();
 
                 energyPerOp = perOpSeries.Length > 0 ? perOpSeries.Average() : double.NaN;
                 energyPerIter = energyInterval.EnergyPerIteration.Average() * 1_000_000;
