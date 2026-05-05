@@ -19,7 +19,7 @@ namespace BenchmarkDotNet.Helpers.RAPL
 
         private List<int> GetCpus()
         {
-            string apiFile = "/sys/devices/system/cpu/present";
+            string apiFile = "/sys/devices/system/cpu/online";
             List<int> cpuList = new List<int>();
             Regex cpuCountRegex = new Regex(@"\d+|-");
             MatchCollection cpuMatches = cpuCountRegex.Matches(File.ReadAllText(apiFile).Trim());
