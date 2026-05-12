@@ -93,7 +93,7 @@ namespace BenchmarkDotNet.Diagnosers
             RunMetrionAnalyzeProcess(logger, $"analyze --no-plots {exportArg} {startTimeArg} {endTimeArg} {dbPathArg} {pidsArg}");
 
             if (config.MeasurePerIteration)
-                AnalyzeMetrionDatabasePerIteration(logger, energyInterval);
+                AnalyzeMetrionDatabasePerIteration(parameters, energyInterval);
             else
                 energyIntervals[parameters.BenchmarkCase].EnergyJ = ExtractLatestMetrionEnergyMeasurement(logger, energyInterval.ProcessId);
 
@@ -133,15 +133,17 @@ namespace BenchmarkDotNet.Diagnosers
             analyzeProcess.Dispose();
         }
 
-        private void AnalyzeMetrionDatabasePerIteration(ILogger logger, EnergyInterval energyInterval)
+        private void AnalyzeMetrionDatabasePerIteration(DiagnoserActionParameters parameters, EnergyInterval energyInterval)
         {
+            var logger = parameters.Config.GetCompositeLogger();
+
             if (energyInterval.IterationTimestamps.Count % 2 != 0)
             {
                 logger.WriteLineError($"{nameof(MetrionEnergyProfiler)}: The number of iteration timestamps is odd ({energyInterval.IterationTimestamps.Count}), unable to calculate energy per iteration.");
                 return;
             }
 
-            var rawMeasurements = ReadRawMetrionCpuMeasurements(logger);
+            var rawMeasurements = ReadRawMetrionCpuMeasurements(parameters);
             if (rawMeasurements.Length == 0)
                 return;
 
@@ -212,8 +214,9 @@ namespace BenchmarkDotNet.Diagnosers
             return totalEnergy;
         }
 
-        private (DateTime, DateTime, double)[] ReadRawMetrionCpuMeasurements(ILogger logger)
+        private (DateTime, DateTime, double)[] ReadRawMetrionCpuMeasurements(DiagnoserActionParameters parameters)
         {
+            var logger = parameters.Config.GetCompositeLogger();
             DirectoryInfo measurementsDirectory = new DirectoryInfo(Path.Combine(config.MetrionDatabaseDirectory.FullName, "metrion/energy_attribution/output/"));
 
             if (!measurementsDirectory.Exists)
@@ -269,6 +272,13 @@ namespace BenchmarkDotNet.Diagnosers
                 var totalEnergy = double.TryParse(parts[TOTAL_ENERGY_INDEX], out double energy) ? energy : double.NaN;
 
                 measurements[i - 1] = (startDateTime, endDateTime, totalEnergy);
+            }
+
+            if (config.KeepMetrionDatabaseFiles)
+            {
+                var traceFilePath = new FileInfo(ArtifactFileNameHelper.GetFilePath(parameters, "metrion", null, "csv", ".0000".Length));
+                traceFilePath.Directory.CreateIfNotExists();
+                File.Move(latestMetrionOutputFile.FullName, traceFilePath.FullName);
             }
 
             return measurements;
