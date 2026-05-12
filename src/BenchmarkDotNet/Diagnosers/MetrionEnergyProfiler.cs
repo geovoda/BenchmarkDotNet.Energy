@@ -538,6 +538,9 @@ namespace BenchmarkDotNet.Diagnosers
             if (metrionProcess == null)
                 return false;
 
+            if (config.AffinityMask != null)
+                metrionProcess.ProcessorAffinity = (IntPtr)(1 << 2);
+
             return true;
         }
 
@@ -553,6 +556,10 @@ namespace BenchmarkDotNet.Diagnosers
 
                 if (!metrionProcess.HasExited)
                 {
+                    logger.WriteLineInfo($"Stopping Metrion({metrionProcess.Id})...");
+                    // Wait 5 seconds before stopping Metrion
+                    metrionProcess.WaitForExit(5000);
+
                     if (libc.kill(metrionProcess.Id, libc.Signals.SIGINT) != 0)
                     {
                         int lastError = Marshal.GetLastWin32Error();

@@ -15,7 +15,8 @@ namespace BenchmarkDotNet.Diagnosers
         /// When set to true, measurements are processed separately for each iteration, which may introduce additional overhead.
         /// When set to false, only a single measurement of the actual stage is performed, and the energy per iteration is approximated accordingly.
         /// </param>
-        public MetrionEnergyProfilerConfig(string metrionBinaryPath, string metrionDatabaseDirectory, string metrionDatabaseNamePattern="monitor*.db", bool keepMetrionDatabaseFiles = false, bool performExtraBenchmarksRun = false, int timeoutInSeconds = 300, bool measurePerIteration = false)
+        /// <param name="affinityMask">A bitmask representing the processors that the threads in the associated process can run on. Optional.</param>
+        public MetrionEnergyProfilerConfig(string metrionBinaryPath, string metrionDatabaseDirectory, string metrionDatabaseNamePattern="monitor*.db", bool keepMetrionDatabaseFiles = false, bool performExtraBenchmarksRun = false, int timeoutInSeconds = 300, bool measurePerIteration = false, IntPtr? affinityMask = null )
         {
             MetrionBinaryPath = new FileInfo(metrionBinaryPath);
             MetrionDatabaseDirectory = new DirectoryInfo(metrionDatabaseDirectory);
@@ -24,6 +25,7 @@ namespace BenchmarkDotNet.Diagnosers
             RunMode = performExtraBenchmarksRun ? RunMode.ExtraRun : RunMode.NoOverhead;
             Timeout = TimeSpan.FromSeconds(timeoutInSeconds);
             MeasurePerIteration = measurePerIteration;
+            AffinityMask = affinityMask;
         }
 
         public TimeSpan Timeout { get; }
@@ -36,5 +38,7 @@ namespace BenchmarkDotNet.Diagnosers
         public string MetrionDatabaseNamePattern { get; }
         public bool KeepMetrionDatabaseFiles { get; }
         public bool MeasurePerIteration { get; }
+
+        public IntPtr? AffinityMask { get; }
     }
 }
