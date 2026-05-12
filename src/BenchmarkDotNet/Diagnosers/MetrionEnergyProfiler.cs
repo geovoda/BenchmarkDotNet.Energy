@@ -326,11 +326,11 @@ namespace BenchmarkDotNet.Diagnosers
                             streamLogger.Write($"{i + 1}");
                             streamLogger.Write(realSeparator);
 
-                            var startTimestamp = energyInterval.EnergyPerIteration.Count > i * 2 ? energyInterval.EnergyPerIteration[i * 2].ToString("yyyy-MM-dd HH:mm:ss") : "";
+                            var startTimestamp = energyInterval.IterationTimestamps.Count > i * 2 ? energyInterval.IterationTimestamps[i * 2].ToString("yyyy-MM-dd HH:mm:ss") : "";
                             streamLogger.Write(CsvHelper.Escape(startTimestamp, realSeparator));
                             streamLogger.Write(realSeparator);
 
-                            var endTimestamp = energyInterval.EnergyPerIteration.Count > i * 2 + 1 ? energyInterval.EnergyPerIteration[i * 2 + 1].ToString("yyyy-MM-dd HH:mm:ss") : "";
+                            var endTimestamp = energyInterval.IterationTimestamps.Count > i * 2 + 1 ? energyInterval.IterationTimestamps[i * 2 + 1].ToString("yyyy-MM-dd HH:mm:ss") : "";
                             streamLogger.Write(CsvHelper.Escape(endTimestamp, realSeparator));
                             streamLogger.Write(realSeparator);
 
