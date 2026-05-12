@@ -532,14 +532,17 @@ namespace BenchmarkDotNet.Diagnosers
                 WorkingDirectory = config.MetrionBinaryPath.Directory.FullName,
             };
 
+            if (config.AffinityMask != null)
+            {
+                processStartInfo.FileName = "taskset";
+                processStartInfo.Arguments = $"{(long)config.AffinityMask:X} {config.MetrionBinaryPath.FullName} monitor";
+            }
+
             logger.WriteLineInfo( $"// Execute: {processStartInfo.FileName} {processStartInfo.Arguments} in {processStartInfo.WorkingDirectory}");
             metrionProcess = Process.Start(processStartInfo);
 
             if (metrionProcess == null)
                 return false;
-
-            if (config.AffinityMask != null)
-                metrionProcess.ProcessorAffinity = (IntPtr)(1 << 2);
 
             return true;
         }
