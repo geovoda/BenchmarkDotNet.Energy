@@ -297,6 +297,12 @@ namespace BenchmarkDotNet.Diagnosers
                     streamLogger.Write("Measurement_IterationIndex");
                     streamLogger.Write(realSeparator);
 
+                    streamLogger.Write("Measurement_IterationStartTimestamp");
+                    streamLogger.Write(realSeparator);
+
+                    streamLogger.Write("Measurement_IterationStopTimestamp");
+                    streamLogger.Write(realSeparator);
+
                     streamLogger.Write("Measurement_Operations");
                     streamLogger.Write(realSeparator);
 
@@ -318,6 +324,14 @@ namespace BenchmarkDotNet.Diagnosers
                             streamLogger.Write(realSeparator);
 
                             streamLogger.Write($"{i + 1}");
+                            streamLogger.Write(realSeparator);
+
+                            var startTimestamp = energyInterval.EnergyPerIteration.Count > i * 2 ? energyInterval.EnergyPerIteration[i * 2].ToString("yyyy-MM-dd HH:mm:ss") : "";
+                            streamLogger.Write(CsvHelper.Escape(startTimestamp, realSeparator));
+                            streamLogger.Write(realSeparator);
+
+                            var endTimestamp = energyInterval.EnergyPerIteration.Count > i * 2 + 1 ? energyInterval.EnergyPerIteration[i * 2 + 1].ToString("yyyy-MM-dd HH:mm:ss") : "";
+                            streamLogger.Write(CsvHelper.Escape(endTimestamp, realSeparator));
                             streamLogger.Write(realSeparator);
 
                             streamLogger.Write(CsvHelper.Escape(energyInterval.OperationsPerIteration[i].ToString(), realSeparator));
