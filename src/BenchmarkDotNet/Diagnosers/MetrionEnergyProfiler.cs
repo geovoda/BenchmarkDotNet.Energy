@@ -41,7 +41,7 @@ namespace BenchmarkDotNet.Diagnosers
 
     public class MetrionEnergyProfiler : IProfiler
     {
-        public static readonly IDiagnoser Default = new MetrionEnergyProfiler(new MetrionEnergyProfilerConfig("/home/test/tools/metrion-internal/.venv/bin/metrion", "/home/test/tools/metrion-internal", keepMetrionDatabaseFiles: true));
+        public static readonly IDiagnoser Default = new MetrionEnergyProfiler(new MetrionEnergyProfilerConfig("/home/test/tools/metrion-internal/.venv/bin/metrion", "/home/test/tools/metrion-internal", keepMetrionFiles: true));
         private readonly MetrionEnergyProfilerConfig config;
         private readonly Dictionary<BenchmarkCase, EnergyInterval> energyIntervals = new();
         private EventPipeSession session;
@@ -66,11 +66,7 @@ namespace BenchmarkDotNet.Diagnosers
             var logger = parameters.Config.GetCompositeLogger();
             logger.WriteLineInfo($"{nameof(MetrionEnergyProfiler)}: Analyzing latest database file.");
 
-            var latestMetrionDbFile = Directory
-                .GetFiles(config.MetrionDatabaseDirectory.FullName, config.MetrionDatabaseNamePattern)
-                .Select(path => new FileInfo(path))
-                .OrderByDescending(f => f.LastWriteTime)
-                .FirstOrDefault();
+            var latestMetrionDbFile = GetLatestFileMatchingPattern(config.MetrionDatabaseDirectory, config.MetrionDatabaseNamePattern);
 
             if (latestMetrionDbFile == null)
             {
@@ -88,7 +84,7 @@ namespace BenchmarkDotNet.Diagnosers
             string pidsArg = $"--filter-pids {energyInterval.ProcessId}";
             string startTimeArg = $"--start-time \"{energyInterval.StartTimestamp.ToString("yyyy-MM-dd HH:mm:ss")}\"";
             string endTimeArg = $"--end-time \"{energyInterval.EndTimestamp.ToString("yyyy-MM-dd HH:mm:ss")}\"";
-            string exportArg = config.MeasurePerIteration ? "--export-raw-data" : "--export-summary";
+            string exportArg = config.MeasurePerIteration ? "--export-raw-data" : "--export-raw-data --export-summary";
 
             RunMetrionAnalyzeProcess(logger, $"analyze --no-plots {exportArg} {startTimeArg} {endTimeArg} {dbPathArg} {pidsArg}");
 
@@ -97,15 +93,30 @@ namespace BenchmarkDotNet.Diagnosers
             else
                 energyIntervals[parameters.BenchmarkCase].EnergyJ = ExtractLatestMetrionEnergyMeasurement(logger, energyInterval.ProcessId);
 
-            if (config.KeepMetrionDatabaseFiles)
+            DirectoryInfo measurementsDirectory = new DirectoryInfo(Path.Combine(config.MetrionDatabaseDirectory.FullName, "metrion/energy_attribution/output/"));
+            var latestMetrionRawOutputFile = GetLatestFileMatchingPattern(measurementsDirectory, "raw_cpu*.csv");
+
+            if (config.KeepMetrionFiles)
             {
-                var traceFilePath = new FileInfo(ArtifactFileNameHelper.GetTraceFilePath(parameters, latestMetrionDbFile.CreationTime, $"pid{energyInterval.ProcessId}.db"));
+                var traceFilePath = new FileInfo(ArtifactFileNameHelper.GetFilePath(parameters, "metrion", latestMetrionDbFile.CreationTime, $"pid{energyInterval.ProcessId}.db", ".0000".Length));
                 File.Move(latestMetrionDbFile.FullName, traceFilePath.FullName);
                 energyIntervals[parameters.BenchmarkCase].TraceFile = traceFilePath;
+
+                if (latestMetrionRawOutputFile != null)
+                {
+                    var newRawMeasurmentFilePath = new FileInfo(ArtifactFileNameHelper.GetFilePath(parameters, "metrion", null, "csv", ".0000".Length));
+                    newRawMeasurmentFilePath.Directory.CreateIfNotExists();
+                    File.Move(latestMetrionRawOutputFile.FullName, newRawMeasurmentFilePath.FullName);
+                }
             }
             else
             {
                 latestMetrionDbFile.Delete();
+
+                if (latestMetrionRawOutputFile != null)
+                {
+                    latestMetrionRawOutputFile.Delete();
+                }
             }
         }
 
@@ -132,6 +143,8 @@ namespace BenchmarkDotNet.Diagnosers
             analyzeProcess.WaitForExit();
             analyzeProcess.Dispose();
         }
+
+
 
         private void AnalyzeMetrionDatabasePerIteration(DiagnoserActionParameters parameters, EnergyInterval energyInterval)
         {
@@ -184,11 +197,7 @@ namespace BenchmarkDotNet.Diagnosers
                 return 0;
             }
 
-            var latestMetrionOutputFile = Directory
-                .GetFiles(measurementsDirectory.FullName, "*.json")
-                .Select(path => new FileInfo(path))
-                .OrderByDescending(f => f.LastWriteTime)
-                .FirstOrDefault();
+            var latestMetrionOutputFile = GetLatestFileMatchingPattern(measurementsDirectory, "*.json");
 
             if (latestMetrionOutputFile == null)
             {
@@ -214,6 +223,14 @@ namespace BenchmarkDotNet.Diagnosers
             return totalEnergy;
         }
 
+        private FileInfo? GetLatestFileMatchingPattern(DirectoryInfo directory, string pattern)
+        {
+            return directory
+                .GetFiles(pattern)
+                .OrderByDescending(f => f.LastWriteTime)
+                .FirstOrDefault();
+        }
+
         private (DateTime, DateTime, double)[] ReadRawMetrionCpuMeasurements(DiagnoserActionParameters parameters)
         {
             var logger = parameters.Config.GetCompositeLogger();
@@ -225,11 +242,7 @@ namespace BenchmarkDotNet.Diagnosers
                 return [];
             }
 
-            var latestMetrionOutputFile = Directory
-                .GetFiles(measurementsDirectory.FullName, "raw_cpu*.csv")
-                .Select(path => new FileInfo(path))
-                .OrderByDescending(f => f.LastWriteTime)
-                .FirstOrDefault();
+            var latestMetrionOutputFile = GetLatestFileMatchingPattern(measurementsDirectory, "raw_cpu*.csv");
 
             if (latestMetrionOutputFile == null)
             {
@@ -272,13 +285,6 @@ namespace BenchmarkDotNet.Diagnosers
                 var totalEnergy = double.TryParse(parts[TOTAL_ENERGY_INDEX], out double energy) ? energy : double.NaN;
 
                 measurements[i - 1] = (startDateTime, endDateTime, totalEnergy);
-            }
-
-            if (config.KeepMetrionDatabaseFiles)
-            {
-                var traceFilePath = new FileInfo(ArtifactFileNameHelper.GetFilePath(parameters, "metrion", null, "csv", ".0000".Length));
-                traceFilePath.Directory.CreateIfNotExists();
-                File.Move(latestMetrionOutputFile.FullName, traceFilePath.FullName);
             }
 
             return measurements;
@@ -418,7 +424,7 @@ namespace BenchmarkDotNet.Diagnosers
 
             logger.WriteLineInfo($"Metrion measured the energy for a total of {energyIntervals.Count} benchmarks.");
 
-            if (config.KeepMetrionDatabaseFiles)
+            if (config.KeepMetrionFiles)
             {
                 logger.WriteLineInfo($"The database files for each benchmark were stored in the Artifacts folder. e.g: ");
                 logger.WriteLineInfo($"{energyIntervals.First().Value.TraceFile.FullName}");
