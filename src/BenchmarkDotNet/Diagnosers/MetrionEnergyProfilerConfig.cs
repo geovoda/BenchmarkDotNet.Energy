@@ -13,9 +13,9 @@ namespace BenchmarkDotNet.Diagnosers
         /// <param name="timeoutInSeconds">How long should we wait for the Metrion script to finish exporting the measurements. 300s by default.</param>
         /// <param name="measurePerIteration">
         /// When set to true, measurements are processed separately for each iteration, which may introduce additional overhead.
-        /// When set to false, only a single measurement of the actual stage is performed, and the energy per iteration is approximated accordingly.
+        /// When set to false, only a single measurement of the Actual Stage is performed, and the energy per iteration is approximated accordingly.
         /// </param>
-        /// <param name="affinityMask">A bitmask representing the processors that the threads in the associated process can run on. Optional.</param>
+        /// <param name="affinityMask">A bitmask representing the processors that Metrion can run on. If omitted, Metrion may run on any processor.</param>
         public MetrionEnergyProfilerConfig(string metrionBinaryPath, string metrionDatabaseDirectory, string metrionDatabaseNamePattern="monitor*.db", bool keepMetrionDatabaseFiles = false, bool performExtraBenchmarksRun = false, int timeoutInSeconds = 300, bool measurePerIteration = false, IntPtr? affinityMask = null )
         {
             MetrionBinaryPath = new FileInfo(metrionBinaryPath);
