@@ -429,6 +429,15 @@ namespace BenchmarkDotNet.Diagnosers
                 var exportedFilePath = ExportMetrionMeasurementsAsCsv();
                 logger.WriteLineInfo("Metrion measurements exported to " + exportedFilePath);
             }
+
+            logger.WriteLineInfo($"The timestamps of Actual Stage for each benchmark:");
+            foreach (var kvp in energyIntervals)
+            {
+                var benchmarkCase = kvp.Key;
+                var energyInterval = kvp.Value;
+
+                logger.WriteLineInfo($"{benchmarkCase.Descriptor.Type.Name}: {energyInterval.StartTimestamp} - {energyInterval.EndTimestamp}");
+            }
         }
 
         public void Handle(HostSignal signal, DiagnoserActionParameters parameters)
