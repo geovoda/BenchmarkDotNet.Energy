@@ -32,7 +32,7 @@ namespace BenchmarkDotNet.Diagnosers
         public int ProcessId { get; set; }
         public DateTime StartTimestamp { get; set; }
         public DateTime EndTimestamp { get; set; }
-        public double EnergyJ { get; set; }
+        public double TotalEnergyJ { get; set; }
         public FileInfo TraceFile { get; set; }
         public List<DateTime> IterationTimestamps { get; } = new();
         public List<double> EnergyPerIteration { get; } = new();
@@ -63,6 +63,8 @@ namespace BenchmarkDotNet.Diagnosers
 
         private void AnalyzeMetrionDatabase(DiagnoserActionParameters parameters)
         {
+            bool USE_RAW_MEASUREMENTS = true;
+
             var logger = parameters.Config.GetCompositeLogger();
             logger.WriteLineInfo($"{nameof(MetrionEnergyProfiler)}: Analyzing latest database file.");
 
@@ -82,16 +84,27 @@ namespace BenchmarkDotNet.Diagnosers
 
             string dbPathArg = $"--db-path {latestMetrionDbFile.FullName}";
             string pidsArg = $"--filter-pids {energyInterval.ProcessId}";
-            string startTimeArg = $"--start-time \"{energyInterval.StartTimestamp.ToString("yyyy-MM-dd HH:mm:ss")}\"";
-            string endTimeArg = $"--end-time \"{energyInterval.EndTimestamp.ToString("yyyy-MM-dd HH:mm:ss")}\"";
+
+            var startTime = energyInterval.StartTimestamp;
+            var endTime = energyInterval.EndTimestamp;
+            if (USE_RAW_MEASUREMENTS)
+            {
+                startTime = startTime.AddHours(-1);
+                endTime =  endTime.AddHours(1);
+            }
+
+            string startTimeArg = $"--start-time \"{startTime.ToString("yyyy-MM-dd HH:mm:ss")}\"";
+            string endTimeArg = $"--end-time \"{endTime.ToString("yyyy-MM-dd HH:mm:ss")}\"";
             string exportArg = config.MeasurePerIteration ? "--export-raw-data" : "--export-raw-data --export-summary";
 
             RunMetrionAnalyzeProcess(logger, $"analyze --no-plots {exportArg} {startTimeArg} {endTimeArg} {dbPathArg} {pidsArg}");
 
             if (config.MeasurePerIteration)
                 AnalyzeMetrionDatabasePerIteration(parameters, energyInterval);
+            else if (USE_RAW_MEASUREMENTS)
+                energyIntervals[parameters.BenchmarkCase].TotalEnergyJ = ExtractLatestRawMetrionEnergyMeasurement(parameters, energyInterval);
             else
-                energyIntervals[parameters.BenchmarkCase].EnergyJ = ExtractLatestMetrionEnergyMeasurement(logger, energyInterval.ProcessId);
+                energyIntervals[parameters.BenchmarkCase].TotalEnergyJ = ExtractLatestMetrionEnergyMeasurement(logger, energyInterval.ProcessId);
 
             DirectoryInfo measurementsDirectory = new DirectoryInfo(Path.Combine(config.MetrionDatabaseDirectory.FullName, "metrion/energy_attribution/output/"));
             var latestMetrionRawOutputFile = GetLatestFileMatchingPattern(measurementsDirectory, "raw_cpu*.csv");
@@ -186,6 +199,16 @@ namespace BenchmarkDotNet.Diagnosers
 
             var overlapFraction = (overlapEnd - overlapStart).TotalSeconds / (mEnd - mStart).TotalSeconds;
             return energy * overlapFraction;
+        }
+
+        private double ExtractLatestRawMetrionEnergyMeasurement(DiagnoserActionParameters parameters, EnergyInterval energyInterval)
+        {
+            var rawMeasurements = ReadRawMetrionCpuMeasurements(parameters);
+
+            if (rawMeasurements.Length == 0)
+                return 0;
+
+            return rawMeasurements.Sum(m => CalculateOverlappingEnergy(m.Item1, m.Item2, m.Item3, energyInterval.StartTimestamp, energyInterval.EndTimestamp));
         }
 
         private double ExtractLatestMetrionEnergyMeasurement(ILogger logger, int processId)
@@ -406,7 +429,7 @@ namespace BenchmarkDotNet.Diagnosers
             }
             else
             {
-                var energyUj = energyInterval.EnergyJ * 1_000_000;
+                var energyUj = energyInterval.TotalEnergyJ * 1_000_000;
                 var totalOps = samples.Where(m => m.Operations > 0).Sum(m => m.Operations);
                 energyPerOp = totalOps > 0 ? energyUj / totalOps : double.NaN;
                 energyPerIter = samples.Any() ? energyUj / samples.Count : double.NaN;
