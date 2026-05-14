@@ -436,7 +436,7 @@ namespace BenchmarkDotNet.Diagnosers
                 var benchmarkCase = kvp.Key;
                 var energyInterval = kvp.Value;
 
-                logger.WriteLineInfo($"{benchmarkCase.Descriptor.Type.Name}: {energyInterval.StartTimestamp} - {energyInterval.EndTimestamp}");
+                logger.WriteLineInfo($"{benchmarkCase.Descriptor.WorkloadMethodDisplayInfo}: {energyInterval.StartTimestamp} - {energyInterval.EndTimestamp}");
             }
         }
 
