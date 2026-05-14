@@ -99,6 +99,7 @@ namespace BenchmarkDotNet.Diagnosers
             if (config.KeepMetrionFiles)
             {
                 var traceFilePath = new FileInfo(ArtifactFileNameHelper.GetFilePath(parameters, "metrion", latestMetrionDbFile.CreationTime, $"pid{energyInterval.ProcessId}.db", ".0000".Length));
+                traceFilePath.Directory.CreateIfNotExists();
                 File.Move(latestMetrionDbFile.FullName, traceFilePath.FullName);
                 energyIntervals[parameters.BenchmarkCase].TraceFile = traceFilePath;
 
