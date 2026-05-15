@@ -52,9 +52,10 @@ namespace BenchmarkDotNet.Diagnosers
 
         [PublicAPI]
         public MetrionEnergyProfiler(MetrionEnergyProfilerConfig config) => this.config = config;
-        public IEnumerable<string> Ids => new[] { nameof(MetrionEnergyProfiler) };
 
         public string ShortName => "metrion";
+
+        public IEnumerable<string> Ids => new[] { nameof(MetrionEnergyProfiler) };
 
         public IEnumerable<IExporter> Exporters => Array.Empty<IExporter>();
 
@@ -62,328 +63,39 @@ namespace BenchmarkDotNet.Diagnosers
 
         public RunMode GetRunMode(BenchmarkCase benchmarkCase) => config.RunMode;
 
-        private void AnalyzeMetrionDatabase(DiagnoserActionParameters parameters)
+        public void Handle(HostSignal signal, DiagnoserActionParameters parameters)
         {
-            var logger = parameters.Config.GetCompositeLogger();
-            logger.WriteLineInfo($"{nameof(MetrionEnergyProfiler)}: Analyzing latest database file.");
+            energyIntervals.TryGetValue(parameters.BenchmarkCase, out var energyInterval);
 
-            var latestMetrionDbFile = GetLatestFileMatchingPattern(config.MetrionDatabaseDirectory, config.MetrionDatabaseNamePattern);
+            if (energyInterval == null)
+                energyInterval = new EnergyInterval();
 
-            if (latestMetrionDbFile == null)
+            switch (signal)
             {
-                logger.WriteLineError($"{nameof(MetrionEnergyProfiler)}: The latest database file not found: {config.MetrionDatabaseDirectory.FullName}");
-                return;
+                case HostSignal.BeforeAnythingElse:
+                    StartMetrion(parameters);
+                    if (config.MeasurePerIteration)
+                        StartEventProfiling(parameters);
+                    break;
+                case HostSignal.AfterProcessStart:
+                    energyInterval.ProcessId = parameters.Process.Id;
+                    break;
+                case HostSignal.BeforeActualRun:
+                    energyInterval.StartTimestamp = DateTime.Now;
+                    break;
+                case HostSignal.AfterActualRun:
+                    energyInterval.EndTimestamp = DateTime.Now;
+                    break;
+                case HostSignal.AfterAll:
+                    StopMetrion(parameters);
+                    if (config.MeasurePerIteration)
+                        StopEventProfiling();
+                    AnalyzeMetrionDatabase(parameters);
+                    break;
             }
 
-            if (!energyIntervals.TryGetValue(parameters.BenchmarkCase, out var energyInterval))
-            {
-                logger.WriteLineError($"{nameof(MetrionEnergyProfiler)}: Missing energy interval for benchmark case '{parameters.BenchmarkCase}' in {nameof(energyIntervals)}.");
-                return;
-            }
-
-            string dbPathArg = $"--db-path {latestMetrionDbFile.FullName}";
-            string pidsArg = $"--filter-pids {energyInterval.ProcessId}";
-            string startTimeArg = $"--start-time \"{energyInterval.StartTimestamp.ToString("yyyy-MM-dd HH:mm:ss")}\"";
-            string endTimeArg = $"--end-time \"{energyInterval.EndTimestamp.ToString("yyyy-MM-dd HH:mm:ss")}\"";
-            string exportArg = config.MeasurePerIteration ? "--export-raw-data" : "--export-raw-data --export-summary";
-
-
-            if (config.MeasurePerIteration)
-            {
-                RunMetrionAnalyzeProcess(logger, $"analyze --no-plots {exportArg} {startTimeArg} {endTimeArg} {dbPathArg} {pidsArg}");
-                AnalyzeMetrionDatabasePerIteration(parameters, energyInterval);
-            }
-            else
-            {
-                RunMetrionAnalyzeProcess(logger, $"analyze --no-plots {exportArg} {startTimeArg} {endTimeArg} {dbPathArg} {pidsArg}");
-                energyIntervals[parameters.BenchmarkCase].TotalEnergyFromSummary = ExtractLatestMetrionEnergyMeasurement(logger, energyInterval.ProcessId);
-
-                startTimeArg = $"--start-time \"{energyInterval.StartTimestamp.AddHours(-1).ToString("yyyy-MM-dd HH:mm:ss")}\"";
-                endTimeArg = $"--end-time \"{energyInterval.EndTimestamp.AddHours(1).ToString("yyyy-MM-dd HH:mm:ss")}\"";
-                RunMetrionAnalyzeProcess(logger, $"analyze --no-plots {exportArg} {startTimeArg} {endTimeArg} {dbPathArg} {pidsArg}");
-                energyIntervals[parameters.BenchmarkCase].TotalEnergyFromRawMeasurements = ExtractLatestRawMetrionEnergyMeasurement(parameters, energyInterval);
-            }
-
-            DirectoryInfo measurementsDirectory = new DirectoryInfo(Path.Combine(config.MetrionDatabaseDirectory.FullName, "metrion/energy_attribution/output/"));
-            var latestMetrionRawOutputFile = GetLatestFileMatchingPattern(measurementsDirectory, "raw_cpu*.csv");
-
-            if (config.KeepMetrionFiles)
-            {
-                var traceFilePath = new FileInfo(ArtifactFileNameHelper.GetFilePath(parameters, "metrion", latestMetrionDbFile.CreationTime, $"pid{energyInterval.ProcessId}.db", ".0000".Length));
-                traceFilePath.Directory.CreateIfNotExists();
-                File.Move(latestMetrionDbFile.FullName, traceFilePath.FullName);
-                energyIntervals[parameters.BenchmarkCase].TraceFile = traceFilePath;
-
-                if (latestMetrionRawOutputFile != null)
-                {
-                    var newRawMeasurmentFilePath = new FileInfo(ArtifactFileNameHelper.GetFilePath(parameters, "metrion", null, "csv", ".0000".Length));
-                    newRawMeasurmentFilePath.Directory.CreateIfNotExists();
-                    File.Move(latestMetrionRawOutputFile.FullName, newRawMeasurmentFilePath.FullName);
-                }
-            }
-            else
-            {
-                latestMetrionDbFile.Delete();
-
-                if (latestMetrionRawOutputFile != null)
-                {
-                    latestMetrionRawOutputFile.Delete();
-                }
-            }
-        }
-
-        private void RunMetrionAnalyzeProcess(ILogger logger, string arguments)
-        {
-            var processStartInfo = new ProcessStartInfo
-            {
-                FileName = config.MetrionBinaryPath.FullName,
-                Arguments = arguments,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                CreateNoWindow = true,
-                WorkingDirectory = config.MetrionDatabaseDirectory.FullName,
-            };
-
-            logger.WriteLineInfo($"// Execute: {processStartInfo.FileName} {processStartInfo.Arguments} in {processStartInfo.WorkingDirectory}");
-            var analyzeProcess = Process.Start(processStartInfo);
-
-            if (analyzeProcess == null)
-                return;
-
-            // if (!analyzeProcess.WaitForExit(1000 * 10))
-            //     analyzeProcess.KillTree();
-            analyzeProcess.WaitForExit();
-            analyzeProcess.Dispose();
-        }
-
-
-
-        private void AnalyzeMetrionDatabasePerIteration(DiagnoserActionParameters parameters, EnergyInterval energyInterval)
-        {
-            var logger = parameters.Config.GetCompositeLogger();
-
-            if (energyInterval.IterationTimestamps.Count % 2 != 0)
-            {
-                logger.WriteLineError($"{nameof(MetrionEnergyProfiler)}: The number of iteration timestamps is odd ({energyInterval.IterationTimestamps.Count}), unable to calculate energy per iteration.");
-                return;
-            }
-
-            var rawMeasurements = ReadRawMetrionCpuMeasurements(parameters);
-            if (rawMeasurements.Length == 0)
-                return;
-
-            energyInterval.IterationTimestamps.Sort();
-            logger.WriteLineInfo($"{nameof(MetrionEnergyProfiler)}: Start processing the energy for each iteration.");
-
-            for (int i = 0; i < energyInterval.IterationTimestamps.Count / 2; i++)
-            {
-                var iterStart = energyInterval.IterationTimestamps[i * 2];
-                var iterEnd = energyInterval.IterationTimestamps[i * 2 + 1];
-
-                double iterationEnergy = rawMeasurements
-                    .Sum(m => CalculateOverlappingEnergy(m.Item1, m.Item2, m.Item3, iterStart, iterEnd));
-
-                energyInterval.EnergyPerIteration.Add(iterationEnergy);
-            }
-        }
-
-        private static double CalculateOverlappingEnergy(DateTime mStart, DateTime mEnd, double energy, DateTime iterStart, DateTime iterEnd)
-        {
-            var overlapStart = mStart > iterStart ? mStart : iterStart;
-            var overlapEnd = mEnd < iterEnd ? mEnd : iterEnd;
-
-            if (overlapEnd <= overlapStart)
-                return 0;
-
-            var overlapFraction = (overlapEnd - overlapStart).TotalSeconds / (mEnd - mStart).TotalSeconds;
-            return energy * overlapFraction;
-        }
-
-        private double ExtractLatestRawMetrionEnergyMeasurement(DiagnoserActionParameters parameters, EnergyInterval energyInterval)
-        {
-            var rawMeasurements = ReadRawMetrionCpuMeasurements(parameters);
-
-            if (rawMeasurements.Length == 0)
-                return 0;
-
-            return rawMeasurements.Sum(m => CalculateOverlappingEnergy(m.Item1, m.Item2, m.Item3, energyInterval.StartTimestamp, energyInterval.EndTimestamp));
-        }
-
-        private double ExtractLatestMetrionEnergyMeasurement(ILogger logger, int processId)
-        {
-            DirectoryInfo measurementsDirectory = new DirectoryInfo(Path.Combine(config.MetrionDatabaseDirectory.FullName, "metrion/energy_attribution/output/"));
-
-            if (!measurementsDirectory.Exists)
-            {
-                logger.WriteLineError($"{nameof(MetrionEnergyProfiler)}: Unable to find measurements directory: {measurementsDirectory.FullName}");
-                return 0;
-            }
-
-            var latestMetrionOutputFile = GetLatestFileMatchingPattern(measurementsDirectory, "*.json");
-
-            if (latestMetrionOutputFile == null)
-            {
-                logger.WriteLineError($"{nameof(MetrionEnergyProfiler)}: The measurements were not found in the directory {measurementsDirectory.FullName}");
-                return 0;
-            }
-
-            var jsonFile = File.ReadAllText(latestMetrionOutputFile.FullName);
-            if (!jsonFile.Contains($"[{processId}]"))
-            {
-                logger.WriteLineError($"{nameof(MetrionEnergyProfiler)}: The latest measurement file ({latestMetrionOutputFile.Name}) contains a different processId. Expected: {processId}.");
-                return 0;
-            }
-
-            using var jsonDocument = JsonDocument.Parse(jsonFile);
-            var rootElement = jsonDocument.RootElement;
-
-            double totalEnergy = rootElement
-                .GetProperty("summary")
-                .GetProperty("total_energy")
-                .GetDouble();
-
-            return totalEnergy;
-        }
-
-        private FileInfo? GetLatestFileMatchingPattern(DirectoryInfo directory, string pattern)
-        {
-            return directory
-                .GetFiles(pattern)
-                .OrderByDescending(f => f.LastWriteTime)
-                .FirstOrDefault();
-        }
-
-        private (DateTime, DateTime, double)[] ReadRawMetrionCpuMeasurements(DiagnoserActionParameters parameters)
-        {
-            var logger = parameters.Config.GetCompositeLogger();
-            DirectoryInfo measurementsDirectory = new DirectoryInfo(Path.Combine(config.MetrionDatabaseDirectory.FullName, "metrion/energy_attribution/output/"));
-
-            if (!measurementsDirectory.Exists)
-            {
-                logger.WriteLineError($"{nameof(MetrionEnergyProfiler)}: Unable to find measurements directory: {measurementsDirectory.FullName}");
-                return [];
-            }
-
-            var latestMetrionOutputFile = GetLatestFileMatchingPattern(measurementsDirectory, "raw_cpu*.csv");
-
-            if (latestMetrionOutputFile == null)
-            {
-                logger.WriteLineError($"{nameof(MetrionEnergyProfiler)}: The measurements were not found in the directory {measurementsDirectory.FullName}");
-                return [];
-            }
-
-            // Read the content of latestMetrionOutputFile
-            var csvFile = File.ReadAllLines(latestMetrionOutputFile.FullName);
-
-            if (csvFile.Length < 2)
-            {
-                logger.WriteLineError($"{nameof(MetrionEnergyProfiler)}: The measurements file {latestMetrionOutputFile.FullName} does not contain enough data.");
-                return [];
-            }
-
-            var headers = csvFile[0].Split(',');
-
-            int INTERVAL_START_INDEX = Array.FindIndex(headers, h => h == "interval_start");
-            int INTERVAL_END_INDEX = Array.FindIndex(headers, h => h == "interval_end");
-            int TOTAL_ENERGY_INDEX = Array.FindIndex(headers, h => h == "total_energy_j");
-
-            int MAX_INDEX = Math.Max(Math.Max(INTERVAL_START_INDEX, INTERVAL_END_INDEX), TOTAL_ENERGY_INDEX);
-
-            (DateTime, DateTime, double)[] measurements = new (DateTime, DateTime, double)[csvFile.Length - 1];
-
-            for (int i = 1; i < csvFile.Length; i++) // Skip header
-            {
-                var line = csvFile[i];
-                var parts = line.Split(',');
-
-                if (parts.Length <= MAX_INDEX)
-                {
-                    logger.WriteLineError($"{nameof(MetrionEnergyProfiler)}: The line '{line}' does not contain enough columns.");
-                    continue;
-                }
-
-                var startDateTime = DateTime.ParseExact(parts[INTERVAL_START_INDEX], "yyyy-MM-dd'T'HH:mm:ss.ffffff", CultureInfo.InvariantCulture);
-                var endDateTime = DateTime.ParseExact(parts[INTERVAL_END_INDEX], "yyyy-MM-dd'T'HH:mm:ss.ffffff", CultureInfo.InvariantCulture);
-                var totalEnergy = double.TryParse(parts[TOTAL_ENERGY_INDEX], out double energy) ? energy : double.NaN;
-
-                measurements[i - 1] = (startDateTime, endDateTime, totalEnergy);
-            }
-
-            return measurements;
-        }
-
-        private string ExportMetrionMeasurementsAsCsv()
-        {
-            string realSeparator = CsvSeparator.Comma.ToRealSeparator();
-
-            string uniqueString = DateTime.Now.ToString("yyyyMMdd-HHmmss");
-            var distinctNames = energyIntervals.Select(kvp => kvp.Key.Descriptor.Type.Name).Distinct();
-            var pathPrefix = distinctNames.Count() == 1 ? distinctNames.First() : "All";
-            var filePath = Path.Combine(artifactsPath.FullName, "results", $"{pathPrefix}_metrion_measurements_{uniqueString}.csv");
-
-            using (var stream = new StreamWriter(filePath, append: false))
-            {
-                using (var streamLogger = new StreamLogger(stream))
-                {
-                    // Writing header
-                    streamLogger.Write("Target");
-                    streamLogger.Write(realSeparator);
-
-                    streamLogger.Write("TargetMethod");
-                    streamLogger.Write(realSeparator);
-
-                    streamLogger.Write("Measurement_IterationIndex");
-                    streamLogger.Write(realSeparator);
-
-                    streamLogger.Write("Measurement_IterationStartTimestamp");
-                    streamLogger.Write(realSeparator);
-
-                    streamLogger.Write("Measurement_IterationStopTimestamp");
-                    streamLogger.Write(realSeparator);
-
-                    streamLogger.Write("Measurement_Operations");
-                    streamLogger.Write(realSeparator);
-
-                    streamLogger.Write("Measurement_MetrionEnergy");
-                    streamLogger.WriteLine();
-
-                    // Writing lines
-                    foreach (var kvp in energyIntervals)
-                    {
-                        var benchmarkCase = kvp.Key;
-                        var energyInterval = kvp.Value;
-
-                        for (int i = 0; i < energyInterval.EnergyPerIteration.Count; ++i)
-                        {
-                            streamLogger.Write(CsvHelper.Escape(benchmarkCase.Descriptor.Type.Name, realSeparator));
-                            streamLogger.Write(realSeparator);
-
-                            streamLogger.Write(CsvHelper.Escape(benchmarkCase.Descriptor.WorkloadMethodDisplayInfo, realSeparator));
-                            streamLogger.Write(realSeparator);
-
-                            streamLogger.Write($"{i + 1}");
-                            streamLogger.Write(realSeparator);
-
-                            var startTimestamp = energyInterval.IterationTimestamps.Count > i * 2 ? energyInterval.IterationTimestamps[i * 2].ToString("yyyy-MM-dd HH:mm:ss") : "";
-                            streamLogger.Write(CsvHelper.Escape(startTimestamp, realSeparator));
-                            streamLogger.Write(realSeparator);
-
-                            var endTimestamp = energyInterval.IterationTimestamps.Count > i * 2 + 1 ? energyInterval.IterationTimestamps[i * 2 + 1].ToString("yyyy-MM-dd HH:mm:ss") : "";
-                            streamLogger.Write(CsvHelper.Escape(endTimestamp, realSeparator));
-                            streamLogger.Write(realSeparator);
-
-                            streamLogger.Write(CsvHelper.Escape(energyInterval.OperationsPerIteration[i].ToString(), realSeparator));
-                            streamLogger.Write(realSeparator);
-
-                            streamLogger.Write(CsvHelper.Escape(energyInterval.EnergyPerIteration[i].ToString(), realSeparator));
-                            streamLogger.WriteLine();
-                        }
-
-                    }
-                }
-            }
-
-            return filePath;
+            energyIntervals.Remove(parameters.BenchmarkCase);
+            energyIntervals.Add(parameters.BenchmarkCase, energyInterval);
         }
 
         public IEnumerable<Metric> ProcessResults(DiagnoserResults results)
@@ -427,7 +139,7 @@ namespace BenchmarkDotNet.Diagnosers
             }
             else
             {
-                var energyUj = energyInterval.TotalEnergyFromSummary * 1_000_000;
+                var energyUj = energyInterval.TotalEnergyFromRawMeasurements * 1_000_000;
                 var totalOps = samples.Where(m => m.Operations > 0).Sum(m => m.Operations);
                 energyPerOp = totalOps > 0 ? energyUj / totalOps : double.NaN;
                 energyPerIter = samples.Any() ? energyUj / samples.Count : double.NaN;
@@ -468,89 +180,6 @@ namespace BenchmarkDotNet.Diagnosers
                 logger.WriteLineInfo($"{benchmarkCase.Descriptor.WorkloadMethodDisplayInfo}: {energyInterval.StartTimestamp.ToString("yyyy-MM-dd'T'HH:mm:ss.ffffff")} - {energyInterval.EndTimestamp.ToString("yyyy-MM-dd'T'HH:mm:ss.ffffff")} - {energyInterval.TotalEnergyFromSummary} - {energyInterval.TotalEnergyFromRawMeasurements}");
             }
         }
-
-        public void Handle(HostSignal signal, DiagnoserActionParameters parameters)
-        {
-            energyIntervals.TryGetValue(parameters.BenchmarkCase, out var energyInterval);
-
-            if (energyInterval == null)
-                energyInterval = new EnergyInterval();
-
-            switch (signal)
-            {
-                case HostSignal.BeforeAnythingElse:
-                    StartMetrion(parameters);
-                    if (config.MeasurePerIteration)
-                        StartEventProfiling(parameters);
-                    break;
-                case HostSignal.AfterProcessStart:
-                    energyInterval.ProcessId = parameters.Process.Id;
-                    break;
-                case HostSignal.BeforeActualRun:
-                    energyInterval.StartTimestamp = DateTime.Now;
-                    break;
-                case HostSignal.AfterActualRun:
-                    energyInterval.EndTimestamp = DateTime.Now;
-                    break;
-                case HostSignal.AfterAll:
-                    StopMetrion(parameters);
-                    if (config.MeasurePerIteration)
-                        StopEventProfiling();
-                    AnalyzeMetrionDatabase(parameters);
-                    break;
-            }
-
-            energyIntervals.Remove(parameters.BenchmarkCase);
-            energyIntervals.Add(parameters.BenchmarkCase, energyInterval);
-        }
-
-        private void StartEventProfiling(DiagnoserActionParameters parameters)
-        {
-            var pid = parameters.Process.Id;
-            var client = new DiagnosticsClient(pid);
-
-            var providers = new[]
-            {
-                new EventPipeProvider(
-                    EngineEventSource.SourceName,
-                    EventLevel.Informational,
-                    long.MaxValue)
-            };
-
-            this.session = client.StartEventPipeSession(providers, false);
-
-            this.eventTask = Task.Run(() =>
-            {
-                using (var source = new EventPipeEventSource(this.session.EventStream))
-                {
-                    source.Dynamic.All += (TraceEvent data) => AddIterationTimestamp(parameters.BenchmarkCase, data);
-                    source.Process();
-                }
-            });
-        }
-
-        private void StopEventProfiling()
-        {
-            this.session?.Stop();
-            this.session?.Dispose();
-
-            // Wait for the event processing task to complete gracefully
-            this.eventTask?.Wait();
-        }
-
-        private void AddIterationTimestamp(BenchmarkCase benchmarkCase, TraceEvent traceEvent)
-        {
-            switch ((int)traceEvent.ID)
-            {
-                case EngineEventSource.WorkloadActualStartEventId:
-                case EngineEventSource.WorkloadActualStopEventId:
-                    if (energyIntervals.TryGetValue(benchmarkCase, out var energyInterval))
-                        energyInterval.IterationTimestamps.Add(traceEvent.TimeStamp);
-                    break;
-            }
-        }
-
-
 
         public IEnumerable<ValidationError> Validate(ValidationParameters validationParameters)
         {
@@ -632,6 +261,384 @@ namespace BenchmarkDotNet.Diagnosers
             {
                 metrionProcess.Dispose();
             }
+        }
+
+        private string ExportMetrionMeasurementsAsCsv()
+        {
+            string realSeparator = CsvSeparator.Comma.ToRealSeparator();
+
+            string uniqueString = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+            var distinctNames = energyIntervals.Select(kvp => kvp.Key.Descriptor.Type.Name).Distinct();
+            var pathPrefix = distinctNames.Count() == 1 ? distinctNames.First() : "All";
+            var filePath = Path.Combine(artifactsPath.FullName, "results", $"{pathPrefix}_metrion_measurements_{uniqueString}.csv");
+
+            using (var stream = new StreamWriter(filePath, append: false))
+            {
+                using (var streamLogger = new StreamLogger(stream))
+                {
+                    // Writing header
+                    streamLogger.Write("Target");
+                    streamLogger.Write(realSeparator);
+
+                    streamLogger.Write("TargetMethod");
+                    streamLogger.Write(realSeparator);
+
+                    streamLogger.Write("Measurement_IterationIndex");
+                    streamLogger.Write(realSeparator);
+
+                    streamLogger.Write("Measurement_IterationStartTimestamp");
+                    streamLogger.Write(realSeparator);
+
+                    streamLogger.Write("Measurement_IterationStopTimestamp");
+                    streamLogger.Write(realSeparator);
+
+                    streamLogger.Write("Measurement_Operations");
+                    streamLogger.Write(realSeparator);
+
+                    streamLogger.Write("Measurement_MetrionEnergy");
+                    streamLogger.WriteLine();
+
+                    // Writing lines
+                    foreach (var kvp in energyIntervals)
+                    {
+                        var benchmarkCase = kvp.Key;
+                        var energyInterval = kvp.Value;
+
+                        for (int i = 0; i < energyInterval.EnergyPerIteration.Count; ++i)
+                        {
+                            streamLogger.Write(CsvHelper.Escape(benchmarkCase.Descriptor.Type.Name, realSeparator));
+                            streamLogger.Write(realSeparator);
+
+                            streamLogger.Write(CsvHelper.Escape(benchmarkCase.Descriptor.WorkloadMethodDisplayInfo, realSeparator));
+                            streamLogger.Write(realSeparator);
+
+                            streamLogger.Write($"{i + 1}");
+                            streamLogger.Write(realSeparator);
+
+                            var startTimestamp = energyInterval.IterationTimestamps.Count > i * 2 ? energyInterval.IterationTimestamps[i * 2].ToString("yyyy-MM-dd HH:mm:ss") : "";
+                            streamLogger.Write(CsvHelper.Escape(startTimestamp, realSeparator));
+                            streamLogger.Write(realSeparator);
+
+                            var endTimestamp = energyInterval.IterationTimestamps.Count > i * 2 + 1 ? energyInterval.IterationTimestamps[i * 2 + 1].ToString("yyyy-MM-dd HH:mm:ss") : "";
+                            streamLogger.Write(CsvHelper.Escape(endTimestamp, realSeparator));
+                            streamLogger.Write(realSeparator);
+
+                            streamLogger.Write(CsvHelper.Escape(energyInterval.OperationsPerIteration[i].ToString(), realSeparator));
+                            streamLogger.Write(realSeparator);
+
+                            streamLogger.Write(CsvHelper.Escape(energyInterval.EnergyPerIteration[i].ToString(), realSeparator));
+                            streamLogger.WriteLine();
+                        }
+
+                    }
+                }
+            }
+
+            return filePath;
+        }
+
+        private void StartEventProfiling(DiagnoserActionParameters parameters)
+        {
+            var pid = parameters.Process.Id;
+            var client = new DiagnosticsClient(pid);
+
+            var providers = new[]
+            {
+                new EventPipeProvider(
+                    EngineEventSource.SourceName,
+                    EventLevel.Informational,
+                    long.MaxValue)
+            };
+
+            this.session = client.StartEventPipeSession(providers, false);
+
+            this.eventTask = Task.Run(() =>
+            {
+                using (var source = new EventPipeEventSource(this.session.EventStream))
+                {
+                    source.Dynamic.All += (TraceEvent data) => AddIterationTimestamp(parameters.BenchmarkCase, data);
+                    source.Process();
+                }
+            });
+        }
+
+        private void StopEventProfiling()
+        {
+            this.session?.Stop();
+            this.session?.Dispose();
+
+            // Wait for the event processing task to complete gracefully
+            this.eventTask?.Wait();
+        }
+
+        private void AddIterationTimestamp(BenchmarkCase benchmarkCase, TraceEvent traceEvent)
+        {
+            switch ((int)traceEvent.ID)
+            {
+                case EngineEventSource.WorkloadActualStartEventId:
+                case EngineEventSource.WorkloadActualStopEventId:
+                    if (energyIntervals.TryGetValue(benchmarkCase, out var energyInterval))
+                        energyInterval.IterationTimestamps.Add(traceEvent.TimeStamp);
+                    break;
+            }
+        }
+
+        private void AnalyzeMetrionDatabase(DiagnoserActionParameters parameters)
+        {
+            var logger = parameters.Config.GetCompositeLogger();
+            logger.WriteLineInfo($"{nameof(MetrionEnergyProfiler)}: Analyzing latest database file.");
+
+            var latestMetrionDbFile = GetLatestFileMatchingPattern(config.MetrionDatabaseDirectory, config.MetrionDatabaseNamePattern);
+
+            if (latestMetrionDbFile == null)
+            {
+                logger.WriteLineError($"{nameof(MetrionEnergyProfiler)}: The latest database file not found: {config.MetrionDatabaseDirectory.FullName}");
+                return;
+            }
+
+            if (!energyIntervals.TryGetValue(parameters.BenchmarkCase, out var energyInterval))
+            {
+                logger.WriteLineError($"{nameof(MetrionEnergyProfiler)}: Missing energy interval for benchmark case '{parameters.BenchmarkCase}' in {nameof(energyIntervals)}.");
+                return;
+            }
+
+            if (config.MeasurePerIteration)
+            {
+                RunMetrionAnalyzeProcess(logger, latestMetrionDbFile, energyInterval);
+                AnalyzeMetrionRawMeasurementsPerIteration(parameters, energyInterval);
+            }
+            else
+            {
+                RunMetrionAnalyzeProcess(logger, latestMetrionDbFile, energyInterval);
+                energyIntervals[parameters.BenchmarkCase].TotalEnergyFromSummary = ExtractMetrionSummaryEnergyMeasurement(logger, energyInterval.ProcessId);
+
+                RunMetrionAnalyzeProcess(logger, latestMetrionDbFile, energyInterval, extendTimestamps: true);
+                energyIntervals[parameters.BenchmarkCase].TotalEnergyFromRawMeasurements = ExtractMetrionRawEnergyMeasurements(parameters, energyInterval);
+            }
+
+            DirectoryInfo measurementsDirectory = new DirectoryInfo(Path.Combine(config.MetrionDatabaseDirectory.FullName, "metrion/energy_attribution/output/"));
+            var latestMetrionRawOutputFile = GetLatestFileMatchingPattern(measurementsDirectory, "raw_cpu*.csv");
+
+            if (config.KeepMetrionFiles)
+            {
+                var traceFilePath = new FileInfo(ArtifactFileNameHelper.GetFilePath(parameters, "metrion", latestMetrionDbFile.CreationTime, $"pid{energyInterval.ProcessId}.db", ".0000".Length));
+                traceFilePath.Directory.CreateIfNotExists();
+                File.Move(latestMetrionDbFile.FullName, traceFilePath.FullName);
+                energyIntervals[parameters.BenchmarkCase].TraceFile = traceFilePath;
+
+                if (latestMetrionRawOutputFile != null)
+                {
+                    var newRawMeasurmentFilePath = new FileInfo(ArtifactFileNameHelper.GetFilePath(parameters, "metrion", null, "csv", ".0000".Length));
+                    newRawMeasurmentFilePath.Directory.CreateIfNotExists();
+                    File.Move(latestMetrionRawOutputFile.FullName, newRawMeasurmentFilePath.FullName);
+                }
+            }
+            else
+            {
+                latestMetrionDbFile.Delete();
+
+                if (latestMetrionRawOutputFile != null)
+                {
+                    latestMetrionRawOutputFile.Delete();
+                }
+            }
+        }
+
+        private void RunMetrionAnalyzeProcess(ILogger logger, FileInfo metrionDatabaseFile, EnergyInterval energyInterval, bool extendTimestamps = false)
+        {
+            string dbPathArg = $"--db-path {metrionDatabaseFile.FullName}";
+            string pidsArg = $"--filter-pids {energyInterval.ProcessId}";
+
+            var startTimestamp = energyInterval.StartTimestamp;
+            var endTimestamp = energyInterval.EndTimestamp;
+
+            // Extend the timestamps with 1 minute so the overlapping measurements will be exported
+            if (extendTimestamps)
+            {
+                startTimestamp = startTimestamp.AddMinutes(-1);
+                endTimestamp = endTimestamp.AddMinutes(1);
+            }
+
+            string startTimeArg = $"--start-time \"{startTimestamp.ToString("yyyy-MM-dd HH:mm:ss")}\"";
+            string endTimeArg = $"--end-time \"{endTimestamp.ToString("yyyy-MM-dd HH:mm:ss")}\"";
+            string exportArg = config.MeasurePerIteration ? "--export-raw-data" : "--export-raw-data --export-summary";
+
+            string allArg = $"analyze --no-plots {exportArg} {startTimeArg} {endTimeArg} {dbPathArg} {pidsArg}";
+
+            var processStartInfo = new ProcessStartInfo
+            {
+                FileName = config.MetrionBinaryPath.FullName,
+                Arguments = allArg,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                CreateNoWindow = true,
+                WorkingDirectory = config.MetrionDatabaseDirectory.FullName,
+            };
+
+            logger.WriteLineInfo($"// Execute: {processStartInfo.FileName} {processStartInfo.Arguments} in {processStartInfo.WorkingDirectory}");
+            var analyzeProcess = Process.Start(processStartInfo);
+
+            if (analyzeProcess == null)
+                return;
+
+            // if (!analyzeProcess.WaitForExit(1000 * 10))
+            //     analyzeProcess.KillTree();
+            analyzeProcess.WaitForExit();
+            analyzeProcess.Dispose();
+        }
+
+        private void AnalyzeMetrionRawMeasurementsPerIteration(DiagnoserActionParameters parameters, EnergyInterval energyInterval)
+        {
+            var logger = parameters.Config.GetCompositeLogger();
+
+            if (energyInterval.IterationTimestamps.Count % 2 != 0)
+            {
+                logger.WriteLineError($"{nameof(MetrionEnergyProfiler)}: The number of iteration timestamps is odd ({energyInterval.IterationTimestamps.Count}), unable to calculate energy per iteration.");
+                return;
+            }
+
+            var rawMeasurements = ReadRawMetrionCpuMeasurements(parameters);
+            if (rawMeasurements.Length == 0)
+                return;
+
+            energyInterval.IterationTimestamps.Sort();
+            logger.WriteLineInfo($"{nameof(MetrionEnergyProfiler)}: Start processing the energy for each iteration.");
+
+            for (int i = 0; i < energyInterval.IterationTimestamps.Count / 2; i++)
+            {
+                var iterStart = energyInterval.IterationTimestamps[i * 2];
+                var iterEnd = energyInterval.IterationTimestamps[i * 2 + 1];
+
+                double iterationEnergy = rawMeasurements
+                    .Sum(m => CalculateOverlappingEnergy(m.Item1, m.Item2, m.Item3, iterStart, iterEnd));
+
+                energyInterval.EnergyPerIteration.Add(iterationEnergy);
+            }
+        }
+
+        private static double CalculateOverlappingEnergy(DateTime mStart, DateTime mEnd, double energy, DateTime iterStart, DateTime iterEnd)
+        {
+            var overlapStart = mStart > iterStart ? mStart : iterStart;
+            var overlapEnd = mEnd < iterEnd ? mEnd : iterEnd;
+
+            if (overlapEnd <= overlapStart)
+                return 0;
+
+            var overlapFraction = (overlapEnd - overlapStart).TotalSeconds / (mEnd - mStart).TotalSeconds;
+            return energy * overlapFraction;
+        }
+
+        private double ExtractMetrionRawEnergyMeasurements(DiagnoserActionParameters parameters, EnergyInterval energyInterval)
+        {
+            var rawMeasurements = ReadRawMetrionCpuMeasurements(parameters);
+
+            if (rawMeasurements.Length == 0)
+                return 0;
+
+            return rawMeasurements.Sum(m => CalculateOverlappingEnergy(m.Item1, m.Item2, m.Item3, energyInterval.StartTimestamp, energyInterval.EndTimestamp));
+        }
+
+        private double ExtractMetrionSummaryEnergyMeasurement(ILogger logger, int processId)
+        {
+            DirectoryInfo measurementsDirectory = new DirectoryInfo(Path.Combine(config.MetrionDatabaseDirectory.FullName, "metrion/energy_attribution/output/"));
+
+            if (!measurementsDirectory.Exists)
+            {
+                logger.WriteLineError($"{nameof(MetrionEnergyProfiler)}: Unable to find measurements directory: {measurementsDirectory.FullName}");
+                return 0;
+            }
+
+            var latestMetrionOutputFile = GetLatestFileMatchingPattern(measurementsDirectory, "*.json");
+
+            if (latestMetrionOutputFile == null)
+            {
+                logger.WriteLineError($"{nameof(MetrionEnergyProfiler)}: The measurements were not found in the directory {measurementsDirectory.FullName}");
+                return 0;
+            }
+
+            var jsonFile = File.ReadAllText(latestMetrionOutputFile.FullName);
+            if (!jsonFile.Contains($"[{processId}]"))
+            {
+                logger.WriteLineError($"{nameof(MetrionEnergyProfiler)}: The latest measurement file ({latestMetrionOutputFile.Name}) contains a different processId. Expected: {processId}.");
+                return 0;
+            }
+
+            using var jsonDocument = JsonDocument.Parse(jsonFile);
+            var rootElement = jsonDocument.RootElement;
+
+            double totalEnergy = rootElement
+                .GetProperty("summary")
+                .GetProperty("total_energy")
+                .GetDouble();
+
+            return totalEnergy;
+        }
+
+        private (DateTime, DateTime, double)[] ReadRawMetrionCpuMeasurements(DiagnoserActionParameters parameters)
+        {
+            var logger = parameters.Config.GetCompositeLogger();
+            DirectoryInfo measurementsDirectory = new DirectoryInfo(Path.Combine(config.MetrionDatabaseDirectory.FullName, "metrion/energy_attribution/output/"));
+
+            if (!measurementsDirectory.Exists)
+            {
+                logger.WriteLineError($"{nameof(MetrionEnergyProfiler)}: Unable to find measurements directory: {measurementsDirectory.FullName}");
+                return [];
+            }
+
+            var latestMetrionOutputFile = GetLatestFileMatchingPattern(measurementsDirectory, "raw_cpu*.csv");
+
+            if (latestMetrionOutputFile == null)
+            {
+                logger.WriteLineError($"{nameof(MetrionEnergyProfiler)}: The measurements were not found in the directory {measurementsDirectory.FullName}");
+                return [];
+            }
+
+            // Read the content of latestMetrionOutputFile
+            var csvFile = File.ReadAllLines(latestMetrionOutputFile.FullName);
+
+            if (csvFile.Length < 2)
+            {
+                logger.WriteLineError($"{nameof(MetrionEnergyProfiler)}: The measurements file {latestMetrionOutputFile.FullName} does not contain enough data.");
+                return [];
+            }
+
+            var headers = csvFile[0].Split(',');
+
+            int INTERVAL_START_INDEX = Array.FindIndex(headers, h => h == "interval_start");
+            int INTERVAL_END_INDEX = Array.FindIndex(headers, h => h == "interval_end");
+            int TOTAL_ENERGY_INDEX = Array.FindIndex(headers, h => h == "total_energy_j");
+
+            int MAX_INDEX = Math.Max(Math.Max(INTERVAL_START_INDEX, INTERVAL_END_INDEX), TOTAL_ENERGY_INDEX);
+
+            (DateTime, DateTime, double)[] measurements = new (DateTime, DateTime, double)[csvFile.Length - 1];
+
+            for (int i = 1; i < csvFile.Length; i++) // Skip header
+            {
+                var line = csvFile[i];
+                var parts = line.Split(',');
+
+                if (parts.Length <= MAX_INDEX)
+                {
+                    logger.WriteLineError($"{nameof(MetrionEnergyProfiler)}: The line '{line}' does not contain enough columns.");
+                    continue;
+                }
+
+                var startDateTime = DateTime.ParseExact(parts[INTERVAL_START_INDEX], "yyyy-MM-dd'T'HH:mm:ss.ffffff", CultureInfo.InvariantCulture);
+                var endDateTime = DateTime.ParseExact(parts[INTERVAL_END_INDEX], "yyyy-MM-dd'T'HH:mm:ss.ffffff", CultureInfo.InvariantCulture);
+                var totalEnergy = double.TryParse(parts[TOTAL_ENERGY_INDEX], out double energy) ? energy : double.NaN;
+
+                measurements[i - 1] = (startDateTime, endDateTime, totalEnergy);
+            }
+
+            return measurements;
+        }
+
+        private FileInfo? GetLatestFileMatchingPattern(DirectoryInfo directory, string pattern)
+        {
+            return directory
+                .GetFiles(pattern)
+                .OrderByDescending(f => f.LastWriteTime)
+                .FirstOrDefault();
         }
 
         private class EnergyMetricDescriptor : IMetricDescriptor
