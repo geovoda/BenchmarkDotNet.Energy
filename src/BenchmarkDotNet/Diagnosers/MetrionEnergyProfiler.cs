@@ -465,7 +465,7 @@ namespace BenchmarkDotNet.Diagnosers
                 var benchmarkCase = kvp.Key;
                 var energyInterval = kvp.Value;
 
-                logger.WriteLineInfo($"{benchmarkCase.Descriptor.WorkloadMethodDisplayInfo}: {energyInterval.StartTimestamp} - {energyInterval.EndTimestamp} - {energyInterval.TotalEnergyFromSummary} - {energyInterval.TotalEnergyFromRawMeasurements}");
+                logger.WriteLineInfo($"{benchmarkCase.Descriptor.WorkloadMethodDisplayInfo}: {energyInterval.StartTimestamp.ToString("yyyy-MM-dd'T'HH:mm:ss.ffffff")} - {energyInterval.EndTimestamp.ToString("yyyy-MM-dd'T'HH:mm:ss.ffffff")} - {energyInterval.TotalEnergyFromSummary} - {energyInterval.TotalEnergyFromRawMeasurements}");
             }
         }
 
